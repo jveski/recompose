@@ -1,0 +1,11 @@
+# Declare a node stanza for each node in your cluster.
+#
+# Find fingerprints on the agent nodes at /opt/recompose-agent/tls/cert-fingerprint.txt.
+# Including the fingerprint in this configuration means the coodinator will trust the agent, effectively joining it to your cluster.
+# Removing the fingerprint revokes all access.
+[[ node ]]
+fingerprint = "5cbb8d9d78f8274e2b121bf347619ea1ac41a68a4de71b963aa85966bad746a1"
+
+containers = [
+  "containers/nginx.toml"
+]

@@ -1,0 +1,34 @@
+# Image and command are passed as args to `podman run`
+image = "docker.io/nginx:latest"
+# command = []
+
+# Flags are passed directly to `podman run`
+# String, int, and bool values are supported.
+# To pass a flag multiple times, declare an array with each value.
+[ flags ]
+publish = "80:80"
+
+# Secrets are decrypted by `age` on the coordinator.
+# Generate a keypair with `age-keygen -o /opt/recompose-coordinator/identity.txt` and document the public key in your GitOps repo.
+#
+# Encrypt with: echo mysecret | age -e --armor -r "YOUR PUBLIC KEY"
+[[ secret ]]
+envvar = "TEST_SECRET"
+
+ciphertext = """
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBvOEwxVXpJZ3oyR1ZEY0RD
+cFJOQWI2OVNqMW4xaTBZUW81b2tTTFNzdjNZCllqQnlKbWZpbXh2UlkvcnFmNmt2
+eWdnci9JcXhTTWx4UU1UMlcxWld3cUUKLS0tIGJvZ2twU1NhbUVQUTRGMDlMSEdK
+aTNRcVVYTXRZb2VhN0hJM0NqVGV1eFEKi61AiSJQ1Byh69uFnAYKcaSWp//BXJaF
+XPbIjTgS8FLFn4YI
+-----END AGE ENCRYPTED FILE-----
+"""
+
+# Static files can easily be mounted into containers.
+[[ file ]]
+path = "/usr/share/nginx/html/index.html"
+
+content = """
+<h1>this was defined in recompose! nice!</h1>
+"""

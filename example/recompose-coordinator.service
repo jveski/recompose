@@ -1,0 +1,20 @@
+[Unit]
+Description=Recompose Container Configuration Management Coordination Server
+
+[Service]
+Restart=always
+RestartSec=3
+
+ExecStartPre=/bin/mkdir -p /opt/recompose-coordinator
+WorkingDirectory=/opt/recompose-coordinator
+
+# Set WEBHOOK_HMAC_KEY to the secret key configured in your Github webhook (if any).
+# If empty, webhooks with not be authenticated.
+Environment=WEBHOOK_HMAC_KEY=66be7f86fad8e7ab264518b7bf3f252e6ea1dfdeI
+
+# The server will listen for agent connections on 8123 by default.
+# Specify the address to serve webhooks on with --public-addr.
+ExecStart=/usr/local/bin/recompose-coordinator --public-addr=:8080
+
+[Install]
+WantedBy=multi-user.target

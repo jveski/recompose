@@ -1,0 +1,20 @@
+[Unit]
+Description=Recompose Container Configuration Management Agent
+
+[Service]
+Restart=always
+RestartSec=3
+KillMode=process # don't kill containers spawned by the agent
+
+ExecStartPre=/bin/mkdir -p /opt/recompose-agent
+WorkingDirectory=/opt/recompose-agent
+
+# Replace --coordinator with the host or host:port of your coordinator process
+# Replace --coordinator-fingerprint with /opt/recompose-coordinator/tls/cert-fingerprint.txt
+# Note that all cert fingerprints are public keys and can safely be shared, committed to version control, etc.
+ExecStart=/usr/local/bin/recompose-agent \
+    --coordinator localhost \
+    --coordinator-fingerprint 75934abaede6972a8dcbc266b55dda2662812d072fc41e2937dd08354498d416
+
+[Install]
+WantedBy=multi-user.target
