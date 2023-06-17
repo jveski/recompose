@@ -348,13 +348,9 @@ func getPodmanFlags(c *expandedContainerSpec) []string {
 
 	for key, val := range c.Spec.Flags {
 		switch v := val.(type) {
-		case []string:
+		case []interface{}:
 			for _, cur := range v {
-				args = append(args, fmt.Sprintf("--%s=%s", key, cur))
-			}
-		case []int:
-			for _, cur := range v {
-				args = append(args, fmt.Sprintf("--%s=%d", key, cur))
+				args = append(args, fmt.Sprintf("--%s=%v", key, cur))
 			}
 		default:
 			args = append(args, fmt.Sprintf("--%s=%v", key, val))
