@@ -56,6 +56,11 @@ func newApiHandler(state inventoryContainer) http.Handler {
 		after := r.URL.Query().Get("after")
 		var watcher <-chan struct{}
 		for {
+			if r.Context().Err() != nil {
+				w.WriteHeader(400)
+				return
+			}
+
 			if after != "" && watcher == nil {
 				ctx, done := context.WithTimeout(r.Context(), time.Minute*30)
 				defer done()
