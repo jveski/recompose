@@ -12,9 +12,15 @@ type ContainerSpec struct {
 	Command []string       `toml:"command"`
 	Flags   map[string]any `toml:"flags"`
 	Secrets []*Secret      `toml:"secret"`
+	Files   []*File        `toml:"file"`
 }
 
 type Secret struct {
 	EnvVar     string `toml:"envvar"`
 	Ciphertext string `toml:"ciphertext"`
+}
+
+type File struct {
+	Path    string `toml:"path"`
+	Content string `toml:"content"`
 }

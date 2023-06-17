@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/google/uuid"
 
 	"github.com/jveski/recompose/common"
 )
@@ -35,6 +36,10 @@ func main() {
 		state         = &common.StateContainer[*common.NodeInventory]{}
 		client        = &coordClient{BaseURL: getCoordinatorBaseUrl(*coordinatorAddr)}
 	)
+
+	if err := os.MkdirAll("mounts", 0755); err != nil {
+		log.Fatalf("fatal error while creating directory: %s", err)
+	}
 
 	cert, _, err := common.GenCertificate(".")
 	if err != nil {
@@ -161,9 +166,13 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 	}
 
 	existingIndex := map[string]*psOutput{}
+	inUseFiles := map[string]struct{}{}
 	for _, c := range existing {
 		hash := c.Labels["recomposeHash"]
 		existingIndex[hash] = c
+		for _, mount := range strings.Split(c.Labels["recomposeMounts"], ",") {
+			inUseFiles[mount] = struct{}{}
+		}
 	}
 
 	// Remove orphaned containers
@@ -184,6 +193,23 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 		log.Printf("removed container %q", name)
 		state.ReEnter()
 		return nil
+	}
+
+	// Clean up unused files
+	mountFiles, err := os.ReadDir("mounts")
+	if err != nil {
+		return fmt.Errorf("listing mount files: %w", err)
+	}
+	for _, file := range mountFiles {
+		if _, ok := inUseFiles[file.Name()]; ok {
+			continue // still in use
+		}
+
+		err := os.Remove(filepath.Join("mounts", file.Name()))
+		if err != nil {
+			return fmt.Errorf("cleaning up mount file: %w", err)
+		}
+		log.Printf("cleaned up mount file %q", file.Name())
 	}
 
 	// Start missing containers
@@ -262,8 +288,11 @@ func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
 	expanded := &expandedContainerSpec{
 		Spec:             spec,
 		DecryptedSecrets: make([]string, len(spec.Secrets)),
+		Mounts:           make([]string, len(spec.Files)),
+		MountIDs:         make([]string, len(spec.Files)),
 	}
 
+	// Decrypt secrets
 	for i, secret := range spec.Secrets {
 		resp, err := client.Post(client.BaseURL+"/decrypt", "", bytes.NewBufferString(secret.Ciphertext))
 		if err != nil {
@@ -282,6 +311,23 @@ func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
 		expanded.DecryptedSecrets[i] = string(buf)
 	}
 
+	// Write files to disk
+	for i, file := range spec.Files {
+		id := uuid.Must(uuid.NewRandom()).String()
+		dest := filepath.Join("mounts", id)
+		err := os.WriteFile(dest, []byte(file.Content), 0755)
+		if err != nil {
+			return fmt.Errorf("writing file for mount %q: %s", file.Path, err)
+		}
+
+		expanded.MountIDs[i] = id
+		expanded.Mounts[i], err = filepath.Abs(dest)
+		if err != nil {
+			return fmt.Errorf("getting abspath for mount %q: %s", file.Path, err)
+		}
+		log.Printf("wrote mount file %q", id)
+	}
+
 	out, err := exec.Command("podman", getPodmanFlags(expanded)...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s", out)
@@ -293,6 +339,8 @@ func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
 type expandedContainerSpec struct {
 	Spec             *common.ContainerSpec
 	DecryptedSecrets []string // aligned with Config.Secrets
+	Mounts           []string // aligned with Config.Files
+	MountIDs         []string // aligned with Config.Files
 }
 
 func getPodmanFlags(c *expandedContainerSpec) []string {
@@ -315,6 +363,13 @@ func getPodmanFlags(c *expandedContainerSpec) []string {
 
 	for i, secret := range c.Spec.Secrets {
 		args = append(args, fmt.Sprintf("--env=%s=%s", secret.EnvVar, c.DecryptedSecrets[i]))
+	}
+
+	for i, file := range c.Spec.Files {
+		args = append(args, fmt.Sprintf("--mount=type=bind,source=%s,target=%s,readonly", c.Mounts[i], file.Path))
+	}
+	if len(c.MountIDs) > 0 {
+		args = append(args, fmt.Sprintf("--label=recomposeMounts=%s", strings.Join(c.MountIDs, ",")))
 	}
 
 	args = append(args, c.Spec.Image)
