@@ -47,4 +47,4 @@ On the node that will serve as coordinator:
 
 ### Done!
 
-See the [cluster configuration example]([example](./example/repo/cluster.toml)) for how to get started actually managing containers.
+See the [cluster configuration example](./example/repo/cluster.toml) for how to get started actually managing containers.
