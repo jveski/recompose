@@ -3,8 +3,10 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"sync"
 	"time"
@@ -17,9 +19,16 @@ func main() {
 		privateAddr        = flag.String("private-addr", ":8123", "address on which to serve the private API (accessed by agents)")
 		publicAddr         = flag.String("public-addr", "", "(optional) address on which to serve the public API (i.e. webhooks)")
 		gitPollingInterval = flag.Duration("git-polling-interval", time.Minute*5, "how often to `git pull`")
+		pprofPort          = flag.Uint("pprof-port", 0, "port to serve default pprof profiling endpoints on or 0 to disable")
 		webhookKey         = []byte(os.Getenv("WEBHOOK_HMAC_KEY"))
 	)
 	flag.Parse()
+
+	if *pprofPort != 0 {
+		go func() {
+			log.Println(http.ListenAndServe(fmt.Sprintf(":%d", *pprofPort), nil)) // default handler has pprof endpoints when package is imported
+		}()
+	}
 
 	var (
 		webhookSignal = make(chan struct{}, 1)
