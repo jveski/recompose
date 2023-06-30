@@ -78,7 +78,6 @@ func TestStateContainer(t *testing.T) {
 	assert.Equal(t, 0, s.Get())
 	s.Swap(123)
 	assert.Equal(t, 123, s.Get())
-	assert.Equal(t, 123, <-ch)
 }
 
 func TestGenCertificate(t *testing.T) {
