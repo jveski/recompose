@@ -6,12 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jveski/recompose/common"
 )
-
-// TODO: Don't start serving until inventory cache is warm to avoid auth errors in agent logs
 
 func main() {
 	var (
@@ -47,13 +46,18 @@ func main() {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
 
+	onSync, synced := block()
 	go common.RunLoop(webhookSignal, *gitPollingInterval, time.Minute*30, func() bool {
 		err := syncInventory(repoDir, state)
 		if err != nil {
 			log.Printf("error syncing inventory: %s", err)
 		}
+		onSync()
 		return err == nil
 	})
+
+	// wait for initial inventory sync before starting server to ensure any incoming requests are authorized appropriately
+	<-synced
 
 	svr := &http.Server{
 		Handler: common.WithLogging(
@@ -70,4 +74,16 @@ func main() {
 	if err := svr.ListenAndServeTLS("", ""); err != nil {
 		log.Fatalf("fatal error while running private API HTTP server: %s", err)
 	}
+}
+
+func block() (func(), <-chan struct{}) {
+	var (
+		ch   = make(chan struct{})
+		once = sync.Once{}
+	)
+	return func() {
+		once.Do(func() {
+			close(ch)
+		})
+	}, ch
 }
