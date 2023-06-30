@@ -218,15 +218,18 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 			if !e.Exited {
 				continue // already running
 			}
-
-			// the container has stopped somehow - restart it
-			log.Printf("restarting exited container %q...", c.Name)
-			out, err := exec.Command("podman", "start", c.Name).CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("starting container %q: %s", c.Name, out)
+			if e.Labels != nil && e.Labels["kickstart"] == "false" {
+				continue // should not be kickstarted
 			}
 
-			log.Printf("restarted exited container %q", c.Name)
+			// the container has stopped somehow - restart it
+			log.Printf("kickstarting exited container %q...", c.Name)
+			out, err := exec.Command("podman", "start", c.Name).CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("kickstarting container %q: %s", c.Name, out)
+			}
+
+			log.Printf("kickstarted exited container %q", c.Name)
 			state.ReEnter()
 			return nil
 		}
@@ -353,6 +356,11 @@ func getPodmanFlags(c *expandedContainerSpec) []string {
 				args = append(args, fmt.Sprintf("--%s=%v", key, cur))
 			}
 		default:
+			if v, ok := val.(string); ok {
+				if key == "restart" && v != "always" && v != "unless-stopped" {
+					args = append(args, "--label=kickstart=false")
+				}
+			}
 			args = append(args, fmt.Sprintf("--%s=%v", key, val))
 		}
 	}
