@@ -32,7 +32,7 @@ func main() {
 
 	if *publicAddr != "" {
 		go func() {
-			err := http.ListenAndServe(*publicAddr, withLogging(newWebhookHandler(webhookKey, webhookSignal)))
+			err := http.ListenAndServe(*publicAddr, common.WithLogging(newWebhookHandler(webhookKey, webhookSignal)))
 			if err != nil {
 				log.Fatalf("fatal error while running public HTTP server: %s", err)
 			}
@@ -53,8 +53,10 @@ func main() {
 	})
 
 	svr := &http.Server{
-		Handler: withLogging(withAuth(state, newApiHandler(state))),
-		Addr:    *privateAddr,
+		Handler: common.WithLogging(
+			common.WithAuth(&authorizer{Container: state},
+				newApiHandler(state))),
+		Addr: *privateAddr,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			ClientAuth:   tls.RequireAnyClientCert,

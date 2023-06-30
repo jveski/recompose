@@ -137,3 +137,12 @@ type indexedInventory struct {
 	GitSHA string
 	ByNode map[string]*common.NodeInventory
 }
+
+type authorizer struct {
+	Container inventoryContainer
+}
+
+func (a *authorizer) TrustsCert(fingerprint string) bool {
+	state := a.Container.Get()
+	return state != nil && state.ByNode[fingerprint] != nil
+}

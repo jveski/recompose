@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-
-	"github.com/jveski/recompose/common"
 )
 
 func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
@@ -96,47 +94,4 @@ func newApiHandler(state inventoryContainer) http.Handler {
 	})
 
 	return mux
-}
-
-func withAuth(inv inventoryContainer, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-			w.WriteHeader(401)
-			return
-		}
-
-		fingerprint := common.GetCertFingerprint(r.TLS.PeerCertificates[0].Raw)
-
-		currentInv := inv.Get()
-		if currentInv == nil || currentInv.ByNode[fingerprint] == nil {
-			w.WriteHeader(403)
-			return
-		}
-
-		// This is a hack to pass the fingerprint to handlers because I don't feel like using context values
-		q := r.URL.Query()
-		q.Set("fingerprint", fingerprint)
-		r.URL.RawQuery = q.Encode()
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func withLogging(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wp := &responseProxy{ResponseWriter: w}
-		next.ServeHTTP(wp, r)
-		log.Printf("%s %s - %d (%s)", r.Method, r.URL, wp.Status, r.RemoteAddr)
-	})
-}
-
-// responseProxy is an annoying necessity to retain the response status for logging purposes.
-type responseProxy struct {
-	http.ResponseWriter
-	Status int
-}
-
-func (r *responseProxy) WriteHeader(status int) {
-	r.Status = status
-	r.ResponseWriter.WriteHeader(status)
 }
