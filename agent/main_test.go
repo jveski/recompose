@@ -11,6 +11,8 @@ import (
 	"github.com/jveski/recompose/common"
 )
 
+// TODO: Fix in GH actions CI
+
 func TestGetPodmanFlags(t *testing.T) {
 	fullToml := `
 	image = "test-image"

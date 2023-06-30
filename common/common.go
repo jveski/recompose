@@ -278,6 +278,7 @@ type WrappedResponseWriter interface {
 	Unwrap() http.ResponseWriter
 }
 
+// TODO: Use Authorizer interface
 func NewClient(cert tls.Certificate, timeout time.Duration, authhook func(string) bool) *http.Client {
 	return &http.Client{
 		Timeout: timeout,

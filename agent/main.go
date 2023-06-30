@@ -28,6 +28,8 @@ import (
 	"github.com/jveski/recompose/common"
 )
 
+// TODO: Add IP address override
+
 func main() {
 	var (
 		coordinatorAddr        = flag.String("coordinator", "", "host or host:port of the coordination server")
@@ -469,7 +471,7 @@ func register(client *coordClient, ip string, port uint) error {
 	ctx, done := context.WithTimeout(context.Background(), common.Jitter(time.Minute*15))
 	defer done()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", client.BaseURL+"/registernode", strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", client.BaseURL+"/registernode?"+form.Encode(), nil)
 	if err != nil {
 		return err
 	}

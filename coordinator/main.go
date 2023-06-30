@@ -35,6 +35,7 @@ func main() {
 		state         = &common.StateContainer[*indexedInventory]{}
 		nodeStore     = newNodeMetadataStore()
 		repoDir       = "./repo"
+		agentClient   *http.Client
 	)
 
 	if err := os.MkdirAll(repoDir, 0755); err != nil {
@@ -55,6 +56,11 @@ func main() {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
 
+	agentClient = common.NewClient(cert, time.Minute*5, func(s string) bool {
+		current := state.Get()
+		return current != nil && current.ByNode[s] != nil
+	})
+
 	onSync, synced := block()
 	go common.RunLoop(webhookSignal, *gitPollingInterval, time.Minute*30, func() bool {
 		err := syncInventory(repoDir, state)
@@ -71,7 +77,7 @@ func main() {
 	svr := &http.Server{
 		Handler: common.WithLogging(
 			common.WithAuth(&authorizer{Container: state},
-				newApiHandler(state, nodeStore))),
+				newApiHandler(state, nodeStore, agentClient))),
 		Addr: *privateAddr,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},

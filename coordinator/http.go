@@ -5,9 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -45,7 +48,7 @@ func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
 	return mux
 }
 
-func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Handler {
+func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agentClient *http.Client) http.Handler {
 	router := httprouter.New()
 
 	// inventoryResponseLock is held while we return an inventory to a node
@@ -65,10 +68,10 @@ func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Ha
 			if after != "" && watcher == nil {
 				ctx, done := context.WithTimeout(r.Context(), time.Minute*30)
 				defer done()
-				watcher = inv.Watch(ctx)
+				watcher = state.Watch(ctx)
 			}
 
-			state := inv.Get()
+			state := state.Get()
 			nodeinv := state.ByNode[r.URL.Query().Get("fingerprint")]
 			if after == "" || (state != nil && state.GitSHA != after) {
 				inventoryResponseLock.Lock()
@@ -99,18 +102,44 @@ func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Ha
 	// Register a node's ephemeral metadata
 	router.POST("/registernode", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		fingerprint := r.URL.Query().Get("fingerprint")
-		log.Printf("received metadata for node: %s", fingerprint)
-
-		apiport, _ := strconv.Atoi(r.Form.Get("apiport"))
-		nodeStore.Set(fingerprint, &nodeMetadata{
-			IP:      r.Form.Get("ip"),
+		apiport, _ := strconv.Atoi(r.URL.Query().Get("apiport"))
+		meta := &nodeMetadata{
+			IP:      r.URL.Query().Get("ip"),
 			APIPort: uint(apiport),
-		})
+		}
+		nodeStore.Set(fingerprint, meta)
+		log.Printf("received metadata for node: %s - ip=%s apiport=%d", fingerprint, meta.IP, meta.APIPort)
 
 		flusher := w.(common.WrappedResponseWriter).Unwrap().(http.Flusher)
 		flusher.Flush()
 		<-r.Context().Done()
 	})
 
+	// Proxy to agent APIs
+	router.GET("/nodes/:fingerprint/logs", newProxyHandler(nodeStore, agentClient, "/logs"))
+	router.GET("/nodes/:fingerprint/status", newProxyHandler(nodeStore, agentClient, "/status"))
+
 	return router
+}
+
+func newProxyHandler(nodeStore *nodeMetadataStore, agentClient *http.Client, upstreamPath string) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		fingerprint := p.ByName("fingerprint")
+
+		metadata := nodeStore.Get(fingerprint)
+		if metadata == nil || metadata.APIPort == 0 {
+			http.Error(w, "node with the given fingerprint is not known", 400)
+			return
+		}
+
+		r.URL.Path = upstreamPath
+
+		upstream := &url.URL{
+			Scheme: "https",
+			Host:   fmt.Sprintf("%s:%d", metadata.IP, metadata.APIPort),
+		}
+		proxy := httputil.NewSingleHostReverseProxy(upstream)
+		proxy.Transport = agentClient.Transport
+		proxy.ServeHTTP(w, r)
+	}
 }
