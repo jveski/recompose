@@ -44,7 +44,7 @@ func TestRunLoop(t *testing.T) {
 
 	t.Run("retries", func(t *testing.T) {
 		output := make(chan struct{})
-		go RunLoop(make(<-chan struct{}), time.Millisecond, time.Millisecond*2, func() bool {
+		go RunLoop(make(<-chan struct{}), time.Millisecond, time.Millisecond*25, func() bool {
 			output <- struct{}{}
 			return false
 		})
@@ -55,9 +55,9 @@ func TestRunLoop(t *testing.T) {
 		<-output
 		latencyA := time.Since(start)
 
+		start = time.Now()
 		<-output
 
-		start = time.Now()
 		<-output
 		latencyB := time.Since(start)
 
