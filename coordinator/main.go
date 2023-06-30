@@ -58,6 +58,7 @@ func main() {
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			ClientAuth:   tls.RequireAnyClientCert,
+			MinVersion:   tls.VersionTLS12,
 		},
 	}
 
