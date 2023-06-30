@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,11 +28,13 @@ import (
 	"github.com/jveski/recompose/common"
 )
 
+// TODO: Add IP address override
+
 func main() {
 	var (
 		coordinatorAddr        = flag.String("coordinator", "", "host or host:port of the coordination server")
 		coordinatorFingerprint = flag.String("coordinator-fingerprint", "", "fingerprint of the coordination server's certificate")
-		addr                   = flag.String("addr", ":8234", "address to serve the agent API on - if no host is given the process's default IP will be discovered")
+		port                   = flag.Uint("addr", 8234, "port to serve the agent API on. 0 to disable")
 	)
 	flag.Parse()
 
@@ -80,17 +83,8 @@ func main() {
 		return err == nil
 	})
 
-	svrHost, svrPort, err := net.SplitHostPort(*addr)
-	if err != nil {
-		log.Printf("error parsing --addr: %s", err)
-	}
-
 	go common.RunLoop(tightloop, 0, time.Minute, func() bool {
-		host := svrHost
-		if svrHost == "" {
-			host = getOutboundIP().String()
-		}
-		err := register(client, host, svrPort)
+		err := register(client, getOutboundIP().String(), *port)
 		if err != nil {
 			log.Printf("error registering node metadata with coordinator: %s", err)
 		}
@@ -98,7 +92,7 @@ func main() {
 	})
 
 	svr := &http.Server{
-		Addr: *addr,
+		Addr: fmt.Sprintf(":%d", *port),
 		Handler: common.WithLogging(
 			common.WithAuth(&staticAuthorizer{Fingerprint: *coordinatorFingerprint},
 				newApiHandler())),
@@ -468,10 +462,10 @@ func newApiHandler() http.Handler {
 	return router
 }
 
-func register(client *coordClient, ip, port string) error {
+func register(client *coordClient, ip string, port uint) error {
 	form := url.Values{}
 	form.Add("ip", ip)
-	form.Add("apiport", port)
+	form.Add("apiport", strconv.Itoa(int(port)))
 
 	// time out the long polling connection after a reasonable period
 	ctx, done := context.WithTimeout(context.Background(), common.Jitter(time.Minute*15))
