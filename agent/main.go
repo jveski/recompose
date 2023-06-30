@@ -24,6 +24,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/google/uuid"
+	"github.com/julienschmidt/httprouter"
 
 	"github.com/jveski/recompose/common"
 )
@@ -416,9 +417,9 @@ type staticAuthorizer struct {
 func (s *staticAuthorizer) TrustsCert(fingerprint string) bool { return s.Fingerprint == fingerprint }
 
 func newApiHandler() http.Handler {
-	mux := http.NewServeMux()
+	router := httprouter.New()
 
-	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+	router.GET("/status", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		output, err := podmanPs()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -428,7 +429,7 @@ func newApiHandler() http.Handler {
 		json.NewEncoder(w).Encode(&output)
 	})
 
-	mux.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
+	router.GET("/logs", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		args := []string{"logs"}
 		if r.URL.Query().Get("follow") != "" {
 			args = append(args, "-f")
@@ -472,7 +473,7 @@ func newApiHandler() http.Handler {
 		cmd.Wait()
 	})
 
-	return mux
+	return router
 }
 
 func register(client *coordClient, ip string, port uint) error {

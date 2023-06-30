@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/julienschmidt/httprouter"
 	"github.com/jveski/recompose/common"
 )
 
@@ -45,14 +46,14 @@ func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
 }
 
 func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Handler {
-	mux := http.NewServeMux()
+	router := httprouter.New()
 
 	// inventoryResponseLock is held while we return an inventory to a node
 	// in order to prevent excessive concurrency in cases where many nodes are connected.
 	inventoryResponseLock := sync.Mutex{}
 
 	// Get the requesting node's inventory
-	mux.HandleFunc("/nodeinventory", func(w http.ResponseWriter, r *http.Request) {
+	router.GET("/nodeinventory", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		after := r.URL.Query().Get("after")
 		var watcher <-chan struct{}
 		for {
@@ -83,7 +84,7 @@ func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Ha
 	})
 
 	// Decrypt a secret (in the request body)
-	mux.HandleFunc("/decrypt", func(w http.ResponseWriter, r *http.Request) {
+	router.POST("/decrypt", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		cmd := exec.CommandContext(r.Context(), "age", "--decrypt", "--identity=identity.txt")
 		cmd.Stdin = r.Body
 		out, err := cmd.CombinedOutput()
@@ -96,7 +97,7 @@ func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Ha
 	})
 
 	// Register a node's ephemeral metadata
-	mux.HandleFunc("/registernode", func(w http.ResponseWriter, r *http.Request) {
+	router.POST("/registernode", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		fingerprint := r.URL.Query().Get("fingerprint")
 		log.Printf("received metadata for node: %s", fingerprint)
 
@@ -111,5 +112,5 @@ func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Ha
 		<-r.Context().Done()
 	})
 
-	return mux
+	return router
 }
