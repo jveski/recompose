@@ -28,12 +28,11 @@ import (
 	"github.com/jveski/recompose/common"
 )
 
-// TODO: Add IP address override
-
 func main() {
 	var (
 		coordinatorAddr        = flag.String("coordinator", "", "host or host:port of the coordination server")
 		coordinatorFingerprint = flag.String("coordinator-fingerprint", "", "fingerprint of the coordination server's certificate")
+		ip                     = flag.String("ip", "", "optionally override IP used to reach this process from the coordinator")
 		port                   = flag.Uint("addr", 8234, "port to serve the agent API on. 0 to disable")
 	)
 	flag.Parse()
@@ -84,7 +83,11 @@ func main() {
 	})
 
 	go common.RunLoop(tightloop, 0, time.Minute, func() bool {
-		err := register(client, getOutboundIP().String(), *port)
+		ip := *ip
+		if ip == "" {
+			ip = getOutboundIP().String()
+		}
+		err := register(client, ip, *port)
 		if err != nil {
 			log.Printf("error registering node metadata with coordinator: %s", err)
 		}
