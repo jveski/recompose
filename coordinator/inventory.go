@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -44,11 +45,13 @@ func syncInventory(dir string, state inventoryContainer) error {
 }
 
 func gitPull(dir string) (string /* sha */, error) {
+	start := time.Now()
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git error: %s", out)
 	}
+	log.Printf("pulled git repo in %s", time.Since(start))
 
 	cmd = exec.Command("git", "rev-parse", "--verify", "HEAD")
 	cmd.Dir = dir
