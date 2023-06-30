@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -28,6 +29,7 @@ func main() {
 	var (
 		coordinatorAddr        = flag.String("coordinator", "", "host or host:port of the coordination server")
 		coordinatorFingerprint = flag.String("coordinator-fingerprint", "", "fingerprint of the coordination server's certificate")
+		addr                   = flag.String("addr", ":8234", "address to serve the agent API on")
 	)
 	flag.Parse()
 
@@ -83,13 +85,29 @@ func main() {
 		}
 	}()
 
-	common.RunLoop(tightloop, 0, time.Minute*15, func() bool {
+	go common.RunLoop(tightloop, 0, time.Minute*15, func() bool {
 		err := syncInventory(client, inventoryFile, state)
 		if err != nil {
 			log.Printf("error getting inventory from coordinator: %s", err)
 		}
 		return err == nil
 	})
+
+	svr := &http.Server{
+		Handler: common.WithLogging(
+			common.WithAuth(&staticAuthorizer{Fingerprint: *coordinatorFingerprint},
+				newApiHandler())),
+		Addr: *addr,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.RequireAnyClientCert,
+			MinVersion:   tls.VersionTLS12,
+		},
+	}
+
+	if err := svr.ListenAndServeTLS("", ""); err != nil {
+		log.Fatalf("fatal error while running API HTTP server: %s", err)
+	}
 }
 
 func getCoordinatorBaseUrl(addr string) string {
@@ -378,4 +396,70 @@ func getPodmanFlags(c *expandedContainerSpec) []string {
 
 	args = append(args, c.Spec.Image)
 	return append(args, c.Spec.Command...)
+}
+
+type staticAuthorizer struct {
+	Fingerprint string
+}
+
+func (s *staticAuthorizer) TrustsCert(fingerprint string) bool { return s.Fingerprint == fingerprint }
+
+func newApiHandler() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		output, err := podmanPs()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		json.NewEncoder(w).Encode(&output)
+	})
+
+	mux.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
+		args := []string{"logs"}
+		if r.URL.Query().Get("follow") != "" {
+			args = append(args, "-f")
+		}
+		if since := r.URL.Query().Get("since"); since != "" {
+			args = append(args, "--since", since)
+		}
+		args = append(args, r.URL.Query().Get("container"))
+
+		cmd := exec.CommandContext(r.Context(), "podman", args...)
+		pipe, err := cmd.StderrPipe()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		cmd.Stdout = cmd.Stderr // merge stdout and stderr
+
+		scan := bufio.NewScanner(pipe)
+		if err := cmd.Start(); err != nil {
+			log.Printf("error starting container log stream: %s", err)
+			return
+		}
+
+		flusher := w.(common.WrappedResponseWriter).Unwrap().(http.Flusher)
+		flusher.Flush()
+
+		// Flush each line out to the client separately
+		for scan.Scan() {
+			_, err := w.Write(append(scan.Bytes(), '\n'))
+			if errors.Is(err, io.EOF) {
+				flusher.Flush()
+				break
+			}
+			if err != nil {
+				log.Printf("error sending container logs to client: %s", err)
+				return
+			}
+			flusher.Flush()
+		}
+
+		cmd.Wait()
+	})
+
+	return mux
 }

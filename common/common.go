@@ -238,7 +238,7 @@ func WithAuth(auth Authorizer, next http.Handler) http.Handler {
 
 		fingerprint := GetCertFingerprint(r.TLS.PeerCertificates[0].Raw)
 
-		if auth == nil || auth.TrustsCert(fingerprint) {
+		if auth == nil || !auth.TrustsCert(fingerprint) {
 			w.WriteHeader(403)
 			return
 		}
@@ -269,4 +269,10 @@ type responseProxy struct {
 func (r *responseProxy) WriteHeader(status int) {
 	r.Status = status
 	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *responseProxy) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+type WrappedResponseWriter interface {
+	Unwrap() http.ResponseWriter
 }
