@@ -9,11 +9,13 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/jveski/recompose/common"
 )
 
 func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
@@ -42,7 +44,7 @@ func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
 	return mux
 }
 
-func newApiHandler(state inventoryContainer) http.Handler {
+func newApiHandler(inv inventoryContainer, nodeStore *nodeMetadataStore) http.Handler {
 	mux := http.NewServeMux()
 
 	// inventoryResponseLock is held while we return an inventory to a node
@@ -62,10 +64,10 @@ func newApiHandler(state inventoryContainer) http.Handler {
 			if after != "" && watcher == nil {
 				ctx, done := context.WithTimeout(r.Context(), time.Minute*30)
 				defer done()
-				watcher = state.Watch(ctx)
+				watcher = inv.Watch(ctx)
 			}
 
-			state := state.Get()
+			state := inv.Get()
 			nodeinv := state.ByNode[r.URL.Query().Get("fingerprint")]
 			if after == "" || (state != nil && state.GitSHA != after) {
 				inventoryResponseLock.Lock()
@@ -91,6 +93,22 @@ func newApiHandler(state inventoryContainer) http.Handler {
 			return
 		}
 		w.Write(out[:len(out)-1]) // trim off trailing newline
+	})
+
+	// Register a node's ephemeral metadata
+	mux.HandleFunc("/registernode", func(w http.ResponseWriter, r *http.Request) {
+		fingerprint := r.URL.Query().Get("fingerprint")
+		log.Printf("received metadata for node: %s", fingerprint)
+
+		apiport, _ := strconv.Atoi(r.Form.Get("apiport"))
+		nodeStore.Set(fingerprint, &nodeMetadata{
+			IP:      r.Form.Get("ip"),
+			APIPort: uint(apiport),
+		})
+
+		flusher := w.(common.WrappedResponseWriter).Unwrap().(http.Flusher)
+		flusher.Flush()
+		<-r.Context().Done()
 	})
 
 	return mux

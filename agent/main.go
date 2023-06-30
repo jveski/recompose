@@ -12,10 +12,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,7 +32,7 @@ func main() {
 	var (
 		coordinatorAddr        = flag.String("coordinator", "", "host or host:port of the coordination server")
 		coordinatorFingerprint = flag.String("coordinator-fingerprint", "", "fingerprint of the coordination server's certificate")
-		addr                   = flag.String("addr", ":8234", "address to serve the agent API on")
+		port                   = flag.Uint("addr", 8234, "port to serve the agent API on. 0 to disable")
 	)
 	flag.Parse()
 
@@ -93,11 +96,19 @@ func main() {
 		return err == nil
 	})
 
+	go common.RunLoop(tightloop, 0, time.Minute, func() bool {
+		err := register(client, getOutboundIP().String(), *port)
+		if err != nil {
+			log.Printf("error registering node metadata with coordinator: %s", err)
+		}
+		return err == nil
+	})
+
 	svr := &http.Server{
+		Addr: fmt.Sprintf(":%d", *port),
 		Handler: common.WithLogging(
 			common.WithAuth(&staticAuthorizer{Fingerprint: *coordinatorFingerprint},
 				newApiHandler())),
-		Addr: *addr,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			ClientAuth:   tls.RequireAnyClientCert,
@@ -462,4 +473,43 @@ func newApiHandler() http.Handler {
 	})
 
 	return mux
+}
+
+func register(client *coordClient, ip string, port uint) error {
+	form := url.Values{}
+	form.Add("ip", ip)
+	form.Add("apiport", strconv.Itoa(int(port)))
+
+	// time out the long polling connection after a reasonable period
+	ctx, done := context.WithTimeout(context.Background(), common.Jitter(time.Minute*15))
+	defer done()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", client.BaseURL+"/registernode", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil // connection recycling timeouts are expected
+		}
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("unexpected status from server: %d", resp.StatusCode)
+	}
+
+	log.Printf("wrote node metadata to coordinator")
+	io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
+func getOutboundIP() net.IP {
+	conn, err := net.Dial("udp", "8.8.8.8:53")
+	if err != nil {
+		log.Fatalf("unable to determine outbound IP address: %s", err)
+	}
+	conn.Close()
+	return conn.LocalAddr().(*net.UDPAddr).IP
 }

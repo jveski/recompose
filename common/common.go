@@ -34,13 +34,13 @@ func RunLoop(signal <-chan struct{}, resync, maxRetry time.Duration, fn func() b
 
 	if resync > 0 {
 		go func() {
-			timer := time.NewTicker(jitter(resync))
+			timer := time.NewTicker(Jitter(resync))
 			for range timer.C {
 				select {
 				case ch <- struct{}{}:
 				default:
 				}
-				timer.Reset(jitter(resync))
+				timer.Reset(Jitter(resync))
 			}
 		}()
 	}
@@ -60,17 +60,17 @@ func RunLoop(signal <-chan struct{}, resync, maxRetry time.Duration, fn func() b
 				lastRetry = maxRetry
 			}
 
-			time.Sleep(jitter(lastRetry))
+			time.Sleep(Jitter(lastRetry))
 		}
 	}
 
 	for range ch {
 		attempt()
-		time.Sleep(jitter(time.Millisecond * 100)) // cooldown
+		time.Sleep(Jitter(time.Millisecond * 100)) // cooldown
 	}
 }
 
-func jitter(duration time.Duration) time.Duration {
+func Jitter(duration time.Duration) time.Duration {
 	maxJitter := int64(duration) * int64(5) / 100 // 5% jitter
 	return duration + time.Duration(mathrand.Int63n(maxJitter*2)-maxJitter)
 }

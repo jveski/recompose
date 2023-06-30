@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -145,4 +146,32 @@ type authorizer struct {
 func (a *authorizer) TrustsCert(fingerprint string) bool {
 	state := a.Container.Get()
 	return state != nil && state.ByNode[fingerprint] != nil
+}
+
+type nodeMetadataStore struct {
+	lock          sync.Mutex
+	byFingerprint map[string]*nodeMetadata
+}
+
+// TODO: Clean up nodes when removed
+
+func newNodeMetadataStore() *nodeMetadataStore {
+	return &nodeMetadataStore{byFingerprint: make(map[string]*nodeMetadata)}
+}
+
+func (n *nodeMetadataStore) Set(fingerprint string, meta *nodeMetadata) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	n.byFingerprint[fingerprint] = meta
+}
+
+func (n *nodeMetadataStore) Get(fingerprint string) *nodeMetadata {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	return n.byFingerprint[fingerprint]
+}
+
+type nodeMetadata struct {
+	IP      string
+	APIPort uint
 }

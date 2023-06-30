@@ -11,6 +11,8 @@ import (
 	"github.com/jveski/recompose/common"
 )
 
+// TODO: Don't start serving until inventory cache is warm to avoid auth errors in agent logs
+
 func main() {
 	var (
 		privateAddr        = flag.String("private-addr", ":8123", "address on which to serve the private API (accessed by agents)")
@@ -23,6 +25,7 @@ func main() {
 	var (
 		webhookSignal = make(chan struct{}, 1)
 		state         = &common.StateContainer[*indexedInventory]{}
+		nodeStore     = newNodeMetadataStore()
 		repoDir       = "./repo"
 	)
 
@@ -55,7 +58,7 @@ func main() {
 	svr := &http.Server{
 		Handler: common.WithLogging(
 			common.WithAuth(&authorizer{Container: state},
-				newApiHandler(state))),
+				newApiHandler(state, nodeStore))),
 		Addr: *privateAddr,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
