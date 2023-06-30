@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -52,24 +51,9 @@ func main() {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
 
-	client.Client = &http.Client{
-		Timeout: time.Minute * 40,
-		Transport: &http.Transport{
-			TLSHandshakeTimeout: time.Second * 10,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // this is safe because we verify the fingerprint in VerifyPeerCertificate
-				Certificates:       []tls.Certificate{cert},
-				VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-					for _, cert := range rawCerts {
-						if common.GetCertFingerprint(cert) == *coordinatorFingerprint {
-							return nil
-						}
-					}
-					return errors.New("fingerprint is not trusted")
-				},
-			},
-		},
-	}
+	client.Client = common.NewClient(cert, time.Minute*45, func(fingerprint string) bool {
+		return fingerprint == *coordinatorFingerprint
+	})
 
 	go common.RunLoop(
 		state.Watch(context.Background()),

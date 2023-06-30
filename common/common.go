@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -275,4 +276,25 @@ func (r *responseProxy) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 type WrappedResponseWriter interface {
 	Unwrap() http.ResponseWriter
+}
+
+func NewClient(cert tls.Certificate, timeout time.Duration, authhook func(string) bool) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: time.Second * 15,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // this is safe because we verify the fingerprint in VerifyPeerCertificate
+				Certificates:       []tls.Certificate{cert},
+				VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+					for _, cert := range rawCerts {
+						if authhook(GetCertFingerprint(cert)) {
+							return nil
+						}
+					}
+					return errors.New("fingerprint is not trusted")
+				},
+			},
+		},
+	}
 }
