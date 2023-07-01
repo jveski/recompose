@@ -57,22 +57,26 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 
 	// Get the requesting node's inventory
 	router.GET("/nodeinventory", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		after := r.URL.Query().Get("after")
+		q := r.URL.Query()
+		after := q.Get("after")
+		ctx := r.Context()
+
 		var watcher <-chan struct{}
 		for {
-			if r.Context().Err() != nil {
+			if ctx.Err() != nil {
 				w.WriteHeader(400)
 				return
 			}
 
 			if after != "" && watcher == nil {
-				ctx, done := context.WithTimeout(r.Context(), time.Minute*30)
+				var done context.CancelFunc
+				ctx, done = context.WithTimeout(ctx, time.Minute*30)
 				defer done()
 				watcher = state.Watch(ctx)
 			}
 
 			state := state.Get()
-			nodeinv := state.ByNode[r.URL.Query().Get("fingerprint")]
+			nodeinv := state.ByNode[q.Get("fingerprint")]
 			if after == "" || (state != nil && state.GitSHA != after) {
 				inventoryResponseLock.Lock()
 				defer inventoryResponseLock.Unlock()
@@ -101,10 +105,11 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 
 	// Register a node's ephemeral metadata
 	router.POST("/registernode", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		fingerprint := r.URL.Query().Get("fingerprint")
-		apiport, _ := strconv.Atoi(r.URL.Query().Get("apiport"))
+		q := r.URL.Query()
+		fingerprint := q.Get("fingerprint")
+		apiport, _ := strconv.Atoi(q.Get("apiport"))
 		meta := &nodeMetadata{
-			IP:      r.URL.Query().Get("ip"),
+			IP:      q.Get("ip"),
 			APIPort: uint(apiport),
 		}
 		nodeStore.Set(fingerprint, meta)
