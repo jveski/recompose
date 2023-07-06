@@ -1,8 +1,9 @@
 package common
 
 type NodeInventory struct {
-	GitSHA     string           `toml:"gitSHA"`
-	Containers []*ContainerSpec `toml:"container"`
+	GitSHA      string           `toml:"gitSHA"`
+	ClusterConf *[]byte          `toml:"clusterConf"`
+	Containers  []*ContainerSpec `toml:"container"`
 }
 
 type ContainerSpec struct {
