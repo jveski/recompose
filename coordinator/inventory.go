@@ -66,16 +66,8 @@ func gitPull(dir string) (string /* sha */, error) {
 }
 
 func readInventory(dir string, inv *indexedInventory) error {
-	buf, err := os.ReadFile(filepath.Join(dir, "cluster.toml"))
-	if os.IsNotExist(err) {
-		return nil // no inventory
-	}
-	if err != nil {
-		return err
-	}
-
 	cluster := &clusterSpec{}
-	_, err = toml.Decode(string(buf), cluster)
+	_, err := toml.DecodeFile(filepath.Join(dir, "cluster.toml"), cluster)
 	if os.IsNotExist(err) {
 		return nil // no inventory
 	}
@@ -89,7 +81,7 @@ func readInventory(dir string, inv *indexedInventory) error {
 			continue
 		}
 
-		nodeInv := &common.NodeInventory{GitSHA: inv.GitSHA, ClusterConf: &buf}
+		nodeInv := &common.NodeInventory{GitSHA: inv.GitSHA}
 		for _, path := range node.Containers {
 			if container, ok := containerIndex[path]; ok {
 				nodeInv.Containers = append(nodeInv.Containers, container)
