@@ -81,25 +81,8 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 
 	// Start missing containers
 	for _, c := range goalIndex {
-		if e, ok := existingIndex[c.Hash]; ok {
-			if !e.Exited {
-				continue // already running
-			}
-			// TODO: Remove this code
-			if e.Labels != nil && e.Labels["kickstart"] == "false" {
-				continue // should not be kickstarted
-			}
-
-			// the container has stopped somehow - restart it
-			log.Printf("kickstarting exited container %q...", c.Name)
-			out, err := exec.Command("podman", "start", c.Name).CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("kickstarting container %q: %s", c.Name, out)
-			}
-
-			log.Printf("kickstarted exited container %q", c.Name)
-			state.ReEnter()
-			return nil
+		if _, ok := existingIndex[c.Hash]; ok {
+			continue // already created
 		}
 
 		log.Printf("starting container %q...", c.Name)
@@ -146,7 +129,6 @@ func podmanPs() ([]*psOutput, error) {
 type psOutput struct {
 	Names  []string
 	Labels map[string]string
-	Exited bool
 }
 
 func podmanRm(name string) error {
