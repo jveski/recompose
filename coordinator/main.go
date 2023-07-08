@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/rpc"
 )
 
 func main() {
@@ -51,7 +52,7 @@ func main() {
 		}()
 	}
 
-	cert, _, err := common.GenCertificate(".")
+	cert, _, err := rpc.GenCertificate(".")
 	if err != nil {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
