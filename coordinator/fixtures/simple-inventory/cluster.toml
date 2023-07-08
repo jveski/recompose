@@ -1,0 +1,7 @@
+[[ node ]]
+fingerprint = "test-fingerprint"
+
+containers = [
+    "test-container-1.toml",
+    "dir/test-container-2.toml",
+]

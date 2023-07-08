@@ -7,15 +7,16 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
+	"github.com/jveski/recompose/internal/concurrency"
 )
 
-type inventoryContainer = *common.StateContainer[*common.NodeInventory]
+type inventoryContainer = *concurrency.StateContainer[*api.NodeInventory]
 
 func syncInventory(client *coordClient, file string, state inventoryContainer) error {
 	current := state.Get()
 	if current == nil {
-		current = &common.NodeInventory{}
+		current = &api.NodeInventory{}
 		if _, err := toml.DecodeFile(file, current); err != nil {
 			log.Printf("warning: failed to read the last seen git sha from disk: %s", err)
 		}
@@ -28,13 +29,6 @@ func syncInventory(client *coordClient, file string, state inventoryContainer) e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 403 {
-		return fmt.Errorf("the coordinator does not trust your cert - add it to cluster.toml")
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("server error status %d", resp.StatusCode)
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("downloading inventory from coordinator: %w", err)
@@ -44,7 +38,7 @@ func syncInventory(client *coordClient, file string, state inventoryContainer) e
 		return fmt.Errorf("writing inventory file: %w", err)
 	}
 
-	inv := &common.NodeInventory{}
+	inv := &api.NodeInventory{}
 	if _, err := toml.Decode(string(body), inv); err != nil {
 		return fmt.Errorf("decoding inventory: %w", err)
 	}

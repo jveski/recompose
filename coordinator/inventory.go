@@ -11,15 +11,15 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
+	"github.com/jveski/recompose/internal/concurrency"
 )
 
-type inventoryContainer = *common.StateContainer[*indexedInventory]
+type inventoryContainer = *concurrency.StateContainer[*indexedInventory]
 
 func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore) error {
 	sha, err := gitPull(dir)
@@ -32,11 +32,7 @@ func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore)
 	}
 	log.Printf("pulled git SHA: %s", sha)
 
-	inv := &indexedInventory{
-		GitSHA:               sha,
-		NodesByFingerprint:   make(map[string]*common.NodeInventory),
-		ClientsByFingerprint: make(map[string]struct{}),
-	}
+	inv := newIndexedInventory(sha)
 	err = readInventory(dir, inv, nms)
 	if err != nil {
 		return fmt.Errorf("reading inventory: %w", err)
@@ -76,13 +72,13 @@ func readInventory(dir string, inv *indexedInventory, nms *nodeMetadataStore) er
 		return err
 	}
 
-	containerIndex := map[string]*common.ContainerSpec{}
+	containerIndex := map[string]*api.ContainerSpec{}
 	for _, node := range cluster.Nodes {
 		if node.Fingerprint == "" {
 			continue
 		}
 
-		nodeInv := &common.NodeInventory{GitSHA: inv.GitSHA}
+		nodeInv := &api.NodeInventory{GitSHA: inv.GitSHA}
 		for _, path := range node.Containers {
 			if container, ok := containerIndex[path]; ok {
 				nodeInv.Containers = append(nodeInv.Containers, container)
@@ -108,17 +104,17 @@ func readInventory(dir string, inv *indexedInventory, nms *nodeMetadataStore) er
 	nms.lock.Lock()
 	defer nms.lock.Unlock()
 
-	for _, node := range nms.byFingerprint {
-		if _, ok := inv.NodesByFingerprint[node.Fingerprint]; ok {
+	for key := range nms.byFingerprint {
+		if _, ok := inv.NodesByFingerprint[key]; ok {
 			continue
 		}
-		delete(nms.byFingerprint, node.Fingerprint)
+		delete(nms.byFingerprint, key)
 	}
 
 	return nil
 }
 
-func readContainerSpec(file string) (*common.ContainerSpec, error) {
+func readContainerSpec(file string) (*api.ContainerSpec, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, fmt.Errorf("opening file: %w", err)
@@ -128,7 +124,7 @@ func readContainerSpec(file string) (*common.ContainerSpec, error) {
 	hash := md5.New()
 	r := io.TeeReader(f, hash)
 
-	spec := &common.ContainerSpec{}
+	spec := &api.ContainerSpec{}
 	if _, err := toml.NewDecoder(r).Decode(spec); err != nil {
 		return nil, err
 	}
@@ -156,44 +152,14 @@ type clientSpec struct {
 
 type indexedInventory struct {
 	GitSHA               string
-	NodesByFingerprint   map[string]*common.NodeInventory
+	NodesByFingerprint   map[string]*api.NodeInventory
 	ClientsByFingerprint map[string]struct{}
 }
 
-type nodeMetadataStore struct {
-	lock          sync.Mutex
-	byFingerprint map[string]*nodeMetadata
-}
-
-func newNodeMetadataStore() *nodeMetadataStore {
-	return &nodeMetadataStore{byFingerprint: make(map[string]*nodeMetadata)}
-}
-
-func (n *nodeMetadataStore) Set(fingerprint string, meta *nodeMetadata) {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-	n.byFingerprint[fingerprint] = meta
-}
-
-func (n *nodeMetadataStore) Get(fingerprint string) *nodeMetadata {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-	return n.byFingerprint[fingerprint]
-}
-
-func (n *nodeMetadataStore) List() []*nodeMetadata {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-
-	slice := []*nodeMetadata{}
-	for _, node := range n.byFingerprint {
-		slice = append(slice, node)
+func newIndexedInventory(gitSHA string) *indexedInventory {
+	return &indexedInventory{
+		GitSHA:               gitSHA,
+		NodesByFingerprint:   make(map[string]*api.NodeInventory),
+		ClientsByFingerprint: make(map[string]struct{}),
 	}
-	return slice
-}
-
-type nodeMetadata struct {
-	Fingerprint string
-	IP          string
-	APIPort     uint
 }

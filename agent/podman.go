@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
 )
 
 func syncPodman(client *coordClient, state inventoryContainer) error {
@@ -21,7 +22,7 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 		return nil // nothing to do yet
 	}
 
-	goalIndex := map[string]*common.ContainerSpec{}
+	goalIndex := map[string]*api.ContainerSpec{}
 	for _, container := range current.Containers {
 		goalIndex[container.Hash] = container
 	}
@@ -80,24 +81,8 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 
 	// Start missing containers
 	for _, c := range goalIndex {
-		if e, ok := existingIndex[c.Hash]; ok {
-			if !e.Exited {
-				continue // already running
-			}
-			if e.Labels != nil && e.Labels["kickstart"] == "false" {
-				continue // should not be kickstarted
-			}
-
-			// the container has stopped somehow - restart it
-			log.Printf("kickstarting exited container %q...", c.Name)
-			out, err := exec.Command("podman", "start", c.Name).CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("kickstarting container %q: %s", c.Name, out)
-			}
-
-			log.Printf("kickstarted exited container %q", c.Name)
-			state.ReEnter()
-			return nil
+		if _, ok := existingIndex[c.Hash]; ok {
+			continue // already created
 		}
 
 		log.Printf("starting container %q...", c.Name)
@@ -144,7 +129,6 @@ func podmanPs() ([]*psOutput, error) {
 type psOutput struct {
 	Names  []string
 	Labels map[string]string
-	Exited bool
 }
 
 func podmanRm(name string) error {
@@ -155,7 +139,7 @@ func podmanRm(name string) error {
 	return nil
 }
 
-func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
+func podmanStart(client *coordClient, spec *api.ContainerSpec) error {
 	expanded := &expandedContainerSpec{
 		Spec:             spec,
 		DecryptedSecrets: make([]string, len(spec.Secrets)),
@@ -165,13 +149,9 @@ func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
 
 	// Decrypt secrets
 	for i, secret := range spec.Secrets {
-		resp, err := client.Post(client.BaseURL+"/decrypt", "", bytes.NewBufferString(secret.Ciphertext))
+		resp, err := client.POST(context.Background(), client.BaseURL+"/decrypt", bytes.NewBufferString(secret.Ciphertext))
 		if err != nil {
 			return fmt.Errorf("decrypting secret for env var %q: %s", secret.EnvVar, err)
-		}
-		if resp.StatusCode != 200 {
-			resp.Body.Close()
-			return fmt.Errorf("server error (status %d) while decrypting secret for env var %q", resp.StatusCode, secret.EnvVar)
 		}
 
 		buf, err := io.ReadAll(resp.Body)
@@ -208,7 +188,7 @@ func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
 }
 
 type expandedContainerSpec struct {
-	Spec             *common.ContainerSpec
+	Spec             *api.ContainerSpec
 	DecryptedSecrets []string // aligned with Config.Secrets
 	Mounts           []string // aligned with Config.Files
 	MountIDs         []string // aligned with Config.Files
@@ -224,11 +204,6 @@ func getPodmanFlags(c *expandedContainerSpec) []string {
 				args = append(args, fmt.Sprintf("--%s=%v", key, cur))
 			}
 		default:
-			if v, ok := val.(string); ok {
-				if key == "restart" && v != "always" && v != "unless-stopped" {
-					args = append(args, "--label=kickstart=false")
-				}
-			}
 			args = append(args, fmt.Sprintf("--%s=%v", key, val))
 		}
 	}
