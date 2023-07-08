@@ -21,6 +21,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/julienschmidt/httprouter"
 	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/rpc"
 )
 
 func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
@@ -61,7 +62,7 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 	inventoryResponseLock := sync.Mutex{}
 
 	// Get the requesting node's inventory
-	router.GET("/nodeinventory", common.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	router.GET("/nodeinventory", rpc.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		q := r.URL.Query()
 		after := q.Get("after")
 		ctx := r.Context()
@@ -96,7 +97,7 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 	}))
 
 	// Decrypt a secret (in the request body)
-	router.POST("/decrypt", common.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	router.POST("/decrypt", rpc.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		cmd := exec.CommandContext(r.Context(), "age", "--decrypt", "--identity=identity.txt")
 		cmd.Stdin = r.Body
 		out, err := cmd.CombinedOutput()
@@ -109,7 +110,7 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 	}))
 
 	// Register a node's ephemeral metadata
-	router.POST("/registernode", common.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	router.POST("/registernode", rpc.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		q := r.URL.Query()
 		fingerprint := q.Get("fingerprint")
 		apiport, _ := strconv.Atoi(q.Get("apiport"))
@@ -121,16 +122,16 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 		nodeStore.Set(fingerprint, meta)
 		log.Printf("received metadata for node: %s - ip=%s apiport=%d", fingerprint, meta.IP, meta.APIPort)
 
-		flusher := w.(common.WrappedResponseWriter).Unwrap().(http.Flusher)
+		flusher := w.(rpc.WrappedResponseWriter).Unwrap().(http.Flusher)
 		flusher.Flush()
 		<-r.Context().Done()
 	}))
 
 	// Proxy to agent APIs
-	router.GET("/nodes/:fingerprint/logs", common.WithAuth(clientAuth, newProxyHandler(nodeStore, agentClient, "/logs")))
+	router.GET("/nodes/:fingerprint/logs", rpc.WithAuth(clientAuth, newProxyHandler(nodeStore, agentClient, "/logs")))
 
 	// Get the status of the entire cluster
-	router.GET("/status", common.WithAuth(clientAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	router.GET("/status", rpc.WithAuth(clientAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		resp := &common.ClusterState{}
 
 		var partial bool

@@ -15,6 +15,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/rpc"
 )
 
 type staticAuthorizer struct {
@@ -23,10 +24,10 @@ type staticAuthorizer struct {
 
 func (s *staticAuthorizer) TrustsCert(fingerprint string) bool { return s.Fingerprint == fingerprint }
 
-func newApiHandler(auth common.Authorizer) http.Handler {
+func newApiHandler(auth rpc.Authorizer) http.Handler {
 	router := httprouter.New()
 
-	router.GET("/ps", common.WithAuth(auth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	router.GET("/ps", rpc.WithAuth(auth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		cmd := exec.CommandContext(r.Context(), "podman", podmanPsArgs...)
 		cmd.Stdout = w
 		if err := cmd.Run(); err != nil {
@@ -35,7 +36,7 @@ func newApiHandler(auth common.Authorizer) http.Handler {
 		}
 	}))
 
-	router.GET("/logs", common.WithAuth(auth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	router.GET("/logs", rpc.WithAuth(auth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		args := []string{"logs"}
 		if since := r.URL.Query().Get("since"); since != "" {
 			args = append(args, "--since", since)
@@ -50,7 +51,7 @@ func newApiHandler(auth common.Authorizer) http.Handler {
 		}
 		cmd.Stdout = cmd.Stderr // merge stdout and stderr
 
-		flusher := w.(common.WrappedResponseWriter).Unwrap().(http.Flusher)
+		flusher := w.(rpc.WrappedResponseWriter).Unwrap().(http.Flusher)
 		flusher.Flush()
 
 		scan := bufio.NewScanner(pipe)

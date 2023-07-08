@@ -45,7 +45,7 @@ func main() {
 
 	if *publicAddr != "" {
 		go func() {
-			err := http.ListenAndServe(*publicAddr, common.WithLogging(newWebhookHandler(webhookKey, webhookSignal)))
+			err := http.ListenAndServe(*publicAddr, rpc.WithLogging(newWebhookHandler(webhookKey, webhookSignal)))
 			if err != nil {
 				log.Fatalf("fatal error while running public HTTP server: %s", err)
 			}
@@ -76,7 +76,7 @@ func main() {
 	<-synced
 
 	svr := &http.Server{
-		Handler: common.WithLogging(newApiHandler(state, nodeStore, agentClient)),
+		Handler: rpc.WithLogging(newApiHandler(state, nodeStore, agentClient)),
 		Addr:    *privateAddr,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},

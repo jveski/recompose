@@ -85,7 +85,7 @@ func main() {
 
 	svr := &http.Server{
 		Addr:    fmt.Sprintf(":%d", *port),
-		Handler: common.WithLogging(newApiHandler(&staticAuthorizer{Fingerprint: *coordinatorFingerprint})),
+		Handler: rpc.WithLogging(newApiHandler(&staticAuthorizer{Fingerprint: *coordinatorFingerprint})),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			ClientAuth:   tls.RequireAnyClientCert,

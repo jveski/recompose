@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/rpc"
 	"github.com/urfave/cli/v2"
 )
 
@@ -213,7 +214,7 @@ func setup(c *cli.Context) (*appContext, error) {
 	}
 	dir := filepath.Join(homedir, ".rectl")
 
-	cert, fingerprint, err := common.GenCertificate(dir)
+	cert, fingerprint, err := rpc.GenCertificate(dir)
 	if err != nil {
 		return nil, fmt.Errorf("generating cert: %w", err)
 	}
