@@ -42,3 +42,22 @@ jobs:
           ldflags: "-s -w"
           pre_command: export CGO_ENABLED=0
           binary_name: "recompose-coordinator"
+
+  coordinator:
+    name: CLI Release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm, arm64]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: wangyoucao577/go-release-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          project_path: "./rectl"
+          ldflags: "-s -w"
+          pre_command: export CGO_ENABLED=0
+          binary_name: "rectl"
