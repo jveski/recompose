@@ -1,5 +1,7 @@
 package common
 
+import "time"
+
 type NodeInventory struct {
 	GitSHA     string           `toml:"gitSHA"`
 	Containers []*ContainerSpec `toml:"container"`
@@ -23,4 +25,15 @@ type Secret struct {
 type File struct {
 	Path    string `toml:"path"`
 	Content string `toml:"content"`
+}
+
+type ClusterState struct {
+	Containers []*ContainerState `json:"containers"`
+}
+
+type ContainerState struct {
+	Name            string     `json:"name"`
+	NodeFingerprint string     `json:"nodeFingerprint"`
+	Created         time.Time  `json:"created"`
+	LastRestart     *time.Time `json:"lastRestart"`
 }
