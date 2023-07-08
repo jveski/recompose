@@ -52,7 +52,7 @@ func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
 	return mux
 }
 
-func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, client *rpc.Client) http.Handler {
+func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, client *rpc.Client, statusTimeout time.Duration) http.Handler {
 	var (
 		router     = httprouter.New()
 		agentAuth  = &agentAuthorizer{Container: state}
@@ -63,7 +63,7 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, clien
 	router.POST("/decrypt", rpc.WithAuth(agentAuth, newDecryptHandler()))
 	router.POST("/registernode", rpc.WithAuth(agentAuth, newRegisterNodeHandler(nodeStore)))
 	router.GET("/nodes/:fingerprint/logs", rpc.WithAuth(clientAuth, newProxyHandler(nodeStore, client, "/logs")))
-	router.GET("/status", rpc.WithAuth(clientAuth, newGetStatusHandler(nodeStore, client)))
+	router.GET("/status", rpc.WithAuth(clientAuth, newGetStatusHandler(nodeStore, client, statusTimeout)))
 
 	return router
 }
@@ -161,14 +161,13 @@ func newProxyHandler(store *nodeMetadataStore, client *rpc.Client, upstreamPath 
 	}
 }
 
-func newGetStatusHandler(store *nodeMetadataStore, client *rpc.Client) httprouter.Handle {
+func newGetStatusHandler(store *nodeMetadataStore, client *rpc.Client, timeout time.Duration) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		resp := &api.ClusterState{}
 
 		var partial bool
 		for _, node := range store.List() {
-			// TODO: Timeouts
-			containers, err := getAgentStatus(r.Context(), client, node)
+			containers, err := getAgentStatus(r.Context(), client, timeout, node)
 			if err != nil {
 				log.Printf("error while getting agent status: %s", err)
 				partial = true
@@ -184,7 +183,10 @@ func newGetStatusHandler(store *nodeMetadataStore, client *rpc.Client) httproute
 	}
 }
 
-func getAgentStatus(ctx context.Context, client *rpc.Client, node *nodeMetadata) ([]*api.ContainerState, error) {
+func getAgentStatus(ctx context.Context, client *rpc.Client, timeout time.Duration, node *nodeMetadata) ([]*api.ContainerState, error) {
+	ctx, done := context.WithTimeout(ctx, timeout)
+	defer done()
+
 	resp, err := client.GET(ctx, fmt.Sprintf("https://%s:%d/ps", node.IP, node.APIPort))
 	if err != nil {
 		return nil, err

@@ -17,6 +17,7 @@ func main() {
 		privateAddr        = flag.String("private-addr", ":8123", "address on which to serve the private API (accessed by agents)")
 		publicAddr         = flag.String("public-addr", "", "(optional) address on which to serve the public API (i.e. webhooks)")
 		gitPollingInterval = flag.Duration("git-polling-interval", time.Minute*5, "how often to `git pull`")
+		agentTimeout       = flag.Duration("agent-timeout", time.Second*15, "timeout for requests to agents")
 		webhookKey         = []byte(os.Getenv("WEBHOOK_HMAC_KEY"))
 	)
 	flag.Parse()
@@ -71,7 +72,7 @@ func main() {
 
 	// This is the main HTTP server that accepts requests to the internal coordination API
 	svr := rpc.NewServer(*privateAddr, cert,
-		rpc.WithLogging(newApiHandler(state, nodeStore, agentClient)))
+		rpc.WithLogging(newApiHandler(state, nodeStore, agentClient, *agentTimeout)))
 
 	if err := svr.ListenAndServeTLS("", ""); err != nil {
 		log.Fatalf("fatal error while running private API HTTP server: %s", err)
