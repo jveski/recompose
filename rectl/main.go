@@ -3,20 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
-	"github.com/jveski/recompose/internal/api"
 	"github.com/jveski/recompose/internal/rpc"
 	"github.com/urfave/cli/v2"
 )
@@ -40,32 +33,9 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			{
-				Name:  "status",
-				Usage: "Get the status of all containers running on the cluster",
-				Action: func(c *cli.Context) error {
-					cc, err := setup(c)
-					if err != nil {
-						return err
-					}
-
-					cluster, err := getClusterStatus(c, cc)
-					if err != nil {
-						return err
-					}
-					sort.Slice(cluster.Containers, func(i, j int) bool { return cluster.Containers[i].Name < cluster.Containers[j].Name })
-
-					tr := tabwriter.NewWriter(os.Stdout, 6, 6, 4, ' ', 0)
-					fmt.Fprintf(tr, "NAME\tNODE\tCREATED\tRESTARTED\n")
-					now := time.Now()
-					for _, container := range cluster.Containers {
-						var lastRestart string
-						if container.LastRestart != nil {
-							lastRestart = durationToString(now.Sub(*container.LastRestart))
-						}
-						fmt.Fprintf(tr, "%s\t%s\t%s\t%s\n", container.Name, container.NodeFingerprint[:6], durationToString(now.Sub(container.Created)), lastRestart)
-					}
-					return tr.Flush()
-				},
+				Name:   "status",
+				Usage:  "Get the status of all containers running on the cluster",
+				Action: statusCmd,
 			},
 			{
 				Name:      "logs",
@@ -77,42 +47,7 @@ func main() {
 						Usage: "start of the time window to query",
 					},
 				},
-				Action: func(c *cli.Context) error {
-					name := c.Args().First()
-					if name == "" {
-						return errors.New("a container name is required")
-					}
-
-					cc, err := setup(c)
-					if err != nil {
-						return err
-					}
-
-					cluster, err := getClusterStatus(c, cc)
-					if err != nil {
-						return err
-					}
-
-					container, nodeFingerprint, err := resolveContainerName(cluster, name)
-					if err != nil {
-						return err
-					}
-
-					q := url.Values{}
-					q.Add("container", container)
-					if since := c.Duration("since"); since > 0 {
-						q.Add("since", strconv.Itoa(int(time.Now().Add(-since).Unix())))
-					}
-
-					resp, err := cc.Client.GET(c.Context, cc.BaseURL+"/nodes/"+nodeFingerprint+"/logs?"+q.Encode())
-					if err != nil {
-						return err
-					}
-					defer resp.Body.Close()
-
-					_, err = io.Copy(os.Stdout, resp.Body)
-					return err
-				},
+				Action: logsCmd,
 			},
 		},
 	}
@@ -142,47 +77,9 @@ func main() {
 	os.Exit(1)
 }
 
-func getClusterStatus(c *cli.Context, cc *appContext) (*api.ClusterState, error) {
-	resp, err := cc.Client.GET(c.Context, cc.BaseURL+"/status")
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 206 {
-		fmt.Fprintf(os.Stderr, "warning: partial results returned from server because one or more agents could not be reached\n")
-	}
-
-	body := &api.ClusterState{}
-	err = json.NewDecoder(resp.Body).Decode(body)
-	if err != nil {
-		return nil, err
-	}
-
-	return body, nil
-}
-
-func resolveContainerName(cluster *api.ClusterState, ref string) (string, string, error) {
-	chunks := strings.SplitN(ref, "@", 2)
-	var candidateName, candidateFingerprint string
-	for _, container := range cluster.Containers {
-		if container.Name != chunks[0] {
-			continue
-		}
-		if candidateName != "" {
-			return "", "", errors.New("multiple containers have this name - reference a specific one using: <container name>@<node fingerprint prefix>")
-		}
-		if len(chunks) == 1 {
-			candidateName = container.Name
-			candidateFingerprint = container.NodeFingerprint
-		} else if strings.HasPrefix(container.NodeFingerprint, chunks[1]) {
-			return container.Name, container.NodeFingerprint, nil
-		}
-	}
-	if candidateName != "" {
-		return candidateName, candidateFingerprint, nil
-	}
-	return "", "", errors.New("container not found")
+type appContext struct {
+	Client  *rpc.Client
+	BaseURL string
 }
 
 func setup(c *cli.Context) (*appContext, error) {
@@ -192,7 +89,7 @@ func setup(c *cli.Context) (*appContext, error) {
 	}
 	dir := filepath.Join(homedir, ".rectl")
 
-	cert, fingerprint, err := rpc.GenCertificate(dir)
+	cert, _, err := rpc.GenCertificate(dir)
 	if err != nil {
 		return nil, fmt.Errorf("generating cert: %w", err)
 	}
@@ -216,9 +113,8 @@ func setup(c *cli.Context) (*appContext, error) {
 	}
 
 	return &appContext{
-		Client:          client,
-		CertFingerprint: fingerprint,
-		BaseURL:         url,
+		Client:  client,
+		BaseURL: url,
 	}, nil
 }
 
@@ -239,27 +135,4 @@ func loadTrustedCerts(dir string) (map[string]struct{}, error) {
 	}
 
 	return m, nil
-}
-
-func durationToString(d time.Duration) string {
-	hr := d.Hours()
-	if hr > 24 {
-		return fmt.Sprintf("%dd", int(hr/24))
-	}
-	if hr > 1 {
-		return fmt.Sprintf("%dh", int(hr))
-	}
-
-	min := d.Minutes()
-	if min > 1 {
-		return fmt.Sprintf("%dm", int(min))
-	}
-
-	return fmt.Sprintf("%ds", int(d.Seconds()))
-}
-
-type appContext struct {
-	Client          *rpc.Client
-	CertFingerprint string
-	BaseURL         string
 }
