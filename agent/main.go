@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/jveski/recompose/internal/api"
@@ -28,7 +27,7 @@ func main() {
 	var (
 		inventoryFile = filepath.Join(".", "inventory.toml")
 		state         = &concurrency.StateContainer[*api.NodeInventory]{}
-		client        = &coordClient{BaseURL: getCoordinatorBaseUrl(*coordinatorAddr)}
+		client        = &coordClient{BaseURL: rpc.UrlPrefix(*coordinatorAddr)}
 	)
 
 	if err := os.MkdirAll("mounts", 0755); err != nil {
@@ -94,14 +93,6 @@ func main() {
 type coordClient struct {
 	*rpc.Client
 	BaseURL string
-}
-
-func getCoordinatorBaseUrl(addr string) string {
-	l := strings.Split(addr, ":")
-	if len(l) >= 2 {
-		return "https://" + addr
-	}
-	return fmt.Sprintf("https://%s:%d", addr, 8123)
 }
 
 func getOutboundIP() net.IP {

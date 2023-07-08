@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/jveski/recompose/internal/rpc"
@@ -88,18 +87,9 @@ func setup(c *cli.Context) (*appContext, error) {
 		return ok
 	}))
 
-	// TODO: Refactor
-	var url string
-	chunks := strings.Split(c.String("coordinator"), ":")
-	if len(chunks) == 1 {
-		url = "https://" + chunks[0] + ":8123"
-	} else {
-		url = "https://" + chunks[0] + ":" + chunks[1]
-	}
-
 	return &appContext{
 		Client:  client,
-		BaseURL: url,
+		BaseURL: rpc.UrlPrefix(c.String("coordinator")),
 	}, nil
 }
 

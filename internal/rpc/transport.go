@@ -7,8 +7,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
+
+// UrlPrefix returns the base URL used to reach the given coordinator host.
+// The host can be specified as `hostname` or `hostname:port`.
+// If port is not given, it will default to 8123 - the default listener port.
+func UrlPrefix(host string) string {
+	chunks := strings.Split(host, ":")
+	if len(chunks) == 1 {
+		return "https://" + chunks[0] + ":8123"
+	} else {
+		return "https://" + chunks[0] + ":" + chunks[1]
+	}
+}
 
 type Client struct {
 	*http.Client
