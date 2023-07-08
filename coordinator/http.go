@@ -204,12 +204,12 @@ func getAgentStatus(ctx context.Context, client *rpc.Client, timeout time.Durati
 		state := &api.ContainerState{
 			Name:            raw.Names[0],
 			NodeFingerprint: node.Fingerprint,
-			Created:         time.Unix(raw.Created, 0),
+			Created:         time.Unix(raw.Created, 0).UTC(),
 		}
 		states[i] = state
 
 		if raw.ExitedAt > 0 {
-			exited := time.Unix(raw.ExitedAt, 0)
+			exited := time.Unix(raw.ExitedAt, 0).UTC()
 			state.LastRestart = &exited
 		}
 	}

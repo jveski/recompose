@@ -111,7 +111,7 @@ func TestGetStatusHappyPath(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	fn(w, r, httprouter.Params{})
 	assert.Equal(t, 200, w.Code)
-	assert.Equal(t, "{\"containers\":[{\"name\":\"test1\",\"nodeFingerprint\":\"test-fingerprint\",\"created\":\"1969-12-31T18:03:54-06:00\",\"lastRestart\":\"1969-12-31T18:02:03-06:00\"}]}\n", w.Body.String())
+	assert.Equal(t, "{\"containers\":[{\"name\":\"test1\",\"nodeFingerprint\":\"test-fingerprint\",\"created\":\"1970-01-01T00:03:54Z\",\"lastRestart\":\"1970-01-01T00:02:03Z\"}]}\n", w.Body.String())
 }
 
 func TestGetStatusTimeout(t *testing.T) {
