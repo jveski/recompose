@@ -10,7 +10,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -20,6 +19,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/julienschmidt/httprouter"
 )
 
 func RunLoop(signal <-chan struct{}, resync, maxRetry time.Duration, fn func() bool) {
@@ -230,8 +231,8 @@ type Authorizer interface {
 	TrustsCert(fingerprint string) bool
 }
 
-func WithAuth(auth Authorizer, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func WithAuth(auth Authorizer, next httprouter.Handle) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
 			w.WriteHeader(401)
 			return
@@ -249,8 +250,8 @@ func WithAuth(auth Authorizer, next http.Handler) http.Handler {
 		q.Set("fingerprint", fingerprint)
 		r.URL.RawQuery = q.Encode()
 
-		next.ServeHTTP(w, r)
-	})
+		next(w, r, ps)
+	}
 }
 
 func WithLogging(next http.Handler) http.Handler {
@@ -293,9 +294,21 @@ func NewClient(cert tls.Certificate, timeout time.Duration, authhook func(string
 							return nil
 						}
 					}
-					return errors.New("fingerprint is not trusted")
+					e := &ErrUntrustedServer{}
+					if len(rawCerts) > 0 {
+						e.Fingerprint = GetCertFingerprint(rawCerts[0])
+					} else {
+						e.Fingerprint = "unknown"
+					}
+					return e
 				},
 			},
 		},
 	}
 }
+
+type ErrUntrustedServer struct {
+	Fingerprint string
+}
+
+func (e *ErrUntrustedServer) Error() string { return "untrusted server certificate" }

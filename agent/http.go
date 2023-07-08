@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,24 +23,20 @@ type staticAuthorizer struct {
 
 func (s *staticAuthorizer) TrustsCert(fingerprint string) bool { return s.Fingerprint == fingerprint }
 
-func newApiHandler() http.Handler {
+func newApiHandler(auth common.Authorizer) http.Handler {
 	router := httprouter.New()
 
-	router.GET("/status", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		output, err := podmanPs()
-		if err != nil {
-			http.Error(w, err.Error(), 500)
+	router.GET("/ps", common.WithAuth(auth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		cmd := exec.CommandContext(r.Context(), "podman", podmanPsArgs...)
+		cmd.Stdout = w
+		if err := cmd.Run(); err != nil {
+			log.Printf("something went wrong while running `podman ps` on behalf of a client: %s", err)
 			return
 		}
+	}))
 
-		json.NewEncoder(w).Encode(&output)
-	})
-
-	router.GET("/logs", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	router.GET("/logs", common.WithAuth(auth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		args := []string{"logs"}
-		if r.URL.Query().Get("follow") != "" {
-			args = append(args, "-f")
-		}
 		if since := r.URL.Query().Get("since"); since != "" {
 			args = append(args, "--since", since)
 		}
@@ -55,14 +50,14 @@ func newApiHandler() http.Handler {
 		}
 		cmd.Stdout = cmd.Stderr // merge stdout and stderr
 
+		flusher := w.(common.WrappedResponseWriter).Unwrap().(http.Flusher)
+		flusher.Flush()
+
 		scan := bufio.NewScanner(pipe)
 		if err := cmd.Start(); err != nil {
 			log.Printf("error starting container log stream: %s", err)
 			return
 		}
-
-		flusher := w.(common.WrappedResponseWriter).Unwrap().(http.Flusher)
-		flusher.Flush()
 
 		// Flush each line out to the client separately
 		for scan.Scan() {
@@ -79,7 +74,7 @@ func newApiHandler() http.Handler {
 		}
 
 		cmd.Wait()
-	})
+	}))
 
 	return router
 }

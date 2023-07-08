@@ -21,7 +21,7 @@ import (
 
 type inventoryContainer = *common.StateContainer[*indexedInventory]
 
-func syncInventory(dir string, state inventoryContainer) error {
+func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore) error {
 	sha, err := gitPull(dir)
 	if err != nil {
 		return fmt.Errorf("pulling git repo: %w", err)
@@ -33,10 +33,11 @@ func syncInventory(dir string, state inventoryContainer) error {
 	log.Printf("pulled git SHA: %s", sha)
 
 	inv := &indexedInventory{
-		GitSHA: sha,
-		ByNode: make(map[string]*common.NodeInventory),
+		GitSHA:               sha,
+		NodesByFingerprint:   make(map[string]*common.NodeInventory),
+		ClientsByFingerprint: make(map[string]struct{}),
 	}
-	err = readInventory(dir, inv)
+	err = readInventory(dir, inv, nms)
 	if err != nil {
 		return fmt.Errorf("reading inventory: %w", err)
 	}
@@ -65,7 +66,7 @@ func gitPull(dir string) (string /* sha */, error) {
 	return rev, nil
 }
 
-func readInventory(dir string, inv *indexedInventory) error {
+func readInventory(dir string, inv *indexedInventory, nms *nodeMetadataStore) error {
 	cluster := &clusterSpec{}
 	_, err := toml.DecodeFile(filepath.Join(dir, "cluster.toml"), cluster)
 	if os.IsNotExist(err) {
@@ -97,7 +98,21 @@ func readInventory(dir string, inv *indexedInventory) error {
 			nodeInv.Containers = append(nodeInv.Containers, container)
 		}
 
-		inv.ByNode[node.Fingerprint] = nodeInv
+		inv.NodesByFingerprint[node.Fingerprint] = nodeInv
+	}
+	for _, cli := range cluster.Clients {
+		inv.ClientsByFingerprint[cli.Fingerprint] = struct{}{}
+	}
+
+	// Prune metadata for nodes that no longer exist
+	nms.lock.Lock()
+	defer nms.lock.Unlock()
+
+	for _, node := range nms.byFingerprint {
+		if _, ok := inv.NodesByFingerprint[node.Fingerprint]; ok {
+			continue
+		}
+		delete(nms.byFingerprint, node.Fingerprint)
 	}
 
 	return nil
@@ -126,7 +141,8 @@ func readContainerSpec(file string) (*common.ContainerSpec, error) {
 }
 
 type clusterSpec struct {
-	Nodes []*nodeSpec `toml:"node"`
+	Nodes   []*nodeSpec   `toml:"node"`
+	Clients []*clientSpec `toml:"client"`
 }
 
 type nodeSpec struct {
@@ -134,26 +150,20 @@ type nodeSpec struct {
 	Containers  []string `toml:"containers"`
 }
 
+type clientSpec struct {
+	Fingerprint string `toml:"fingerprint"`
+}
+
 type indexedInventory struct {
-	GitSHA string
-	ByNode map[string]*common.NodeInventory
-}
-
-type authorizer struct {
-	Container inventoryContainer
-}
-
-func (a *authorizer) TrustsCert(fingerprint string) bool {
-	state := a.Container.Get()
-	return state != nil && state.ByNode[fingerprint] != nil
+	GitSHA               string
+	NodesByFingerprint   map[string]*common.NodeInventory
+	ClientsByFingerprint map[string]struct{}
 }
 
 type nodeMetadataStore struct {
 	lock          sync.Mutex
 	byFingerprint map[string]*nodeMetadata
 }
-
-// TODO: Clean up nodes when removed
 
 func newNodeMetadataStore() *nodeMetadataStore {
 	return &nodeMetadataStore{byFingerprint: make(map[string]*nodeMetadata)}
@@ -171,7 +181,19 @@ func (n *nodeMetadataStore) Get(fingerprint string) *nodeMetadata {
 	return n.byFingerprint[fingerprint]
 }
 
+func (n *nodeMetadataStore) List() []*nodeMetadata {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	slice := []*nodeMetadata{}
+	for _, node := range n.byFingerprint {
+		slice = append(slice, node)
+	}
+	return slice
+}
+
 type nodeMetadata struct {
-	IP      string
-	APIPort uint
+	Fingerprint string
+	IP          string
+	APIPort     uint
 }

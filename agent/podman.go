@@ -113,8 +113,10 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 	return nil
 }
 
+var podmanPsArgs = []string{"ps", "--all", "--format=json", "--filter=label=createdBy=recompose"}
+
 func podmanPs() ([]*psOutput, error) {
-	cmd := exec.Command("podman", "ps", "--all", "--format=json", "--filter=label=createdBy=recompose")
+	cmd := exec.Command("podman", podmanPsArgs...)
 	reader, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("getting command stdout pipe: %w", err)
