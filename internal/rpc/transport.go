@@ -7,8 +7,7 @@ import (
 	"time"
 )
 
-// TODO: Use Authorizer interface
-func NewClient(cert tls.Certificate, timeout time.Duration, authhook func(string) bool) *http.Client {
+func NewClient(cert tls.Certificate, timeout time.Duration, auth Authorizer) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
@@ -18,7 +17,7 @@ func NewClient(cert tls.Certificate, timeout time.Duration, authhook func(string
 				Certificates:       []tls.Certificate{cert},
 				VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 					for _, cert := range rawCerts {
-						if authhook(GetCertFingerprint(cert)) {
+						if auth.TrustsCert(GetCertFingerprint(cert)) {
 							return nil
 						}
 					}

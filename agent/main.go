@@ -41,9 +41,9 @@ func main() {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
 
-	client.Client = rpc.NewClient(cert, time.Minute*45, func(fingerprint string) bool {
+	client.Client = rpc.NewClient(cert, time.Minute*45, rpc.AuthorizerFunc(func(fingerprint string) bool {
 		return fingerprint == *coordinatorFingerprint
-	})
+	}))
 
 	go common.RunLoop(
 		state.Watch(context.Background()),

@@ -57,10 +57,10 @@ func main() {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
 
-	agentClient = rpc.NewClient(cert, time.Minute*5, func(s string) bool {
+	agentClient = rpc.NewClient(cert, time.Minute*5, rpc.AuthorizerFunc(func(s string) bool {
 		current := state.Get()
 		return current != nil && current.NodesByFingerprint[s] != nil
-	})
+	}))
 
 	onSync, synced := block()
 	go common.RunLoop(webhookSignal, *gitPollingInterval, time.Minute*30, func() bool {

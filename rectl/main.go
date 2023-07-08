@@ -224,10 +224,10 @@ func setup(c *cli.Context) (*appContext, error) {
 		return nil, fmt.Errorf("reading trusted certs file: %w", err)
 	}
 
-	client := rpc.NewClient(cert, c.Duration("timeout"), func(fingerprint string) bool {
+	client := rpc.NewClient(cert, c.Duration("timeout"), rpc.AuthorizerFunc(func(fingerprint string) bool {
 		_, ok := trusted[fingerprint]
 		return ok
-	})
+	}))
 
 	var url string
 	chunks := strings.Split(c.String("coordinator"), ":")
