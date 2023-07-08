@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -44,37 +43,12 @@ func newApiHandler(auth rpc.Authorizer) http.Handler {
 		args = append(args, r.URL.Query().Get("container"))
 
 		cmd := exec.CommandContext(r.Context(), "podman", args...)
-		pipe, err := cmd.StderrPipe()
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		cmd.Stdout = cmd.Stderr // merge stdout and stderr
-
-		flusher := w.(rpc.WrappedResponseWriter).Unwrap().(http.Flusher)
-		flusher.Flush()
-
-		scan := bufio.NewScanner(pipe)
-		if err := cmd.Start(); err != nil {
+		cmd.Stdout = w
+		cmd.Stderr = w
+		if err := cmd.Run(); err != nil {
 			log.Printf("error starting container log stream: %s", err)
 			return
 		}
-
-		// Flush each line out to the client separately
-		for scan.Scan() {
-			_, err := w.Write(append(scan.Bytes(), '\n'))
-			if errors.Is(err, io.EOF) {
-				flusher.Flush()
-				break
-			}
-			if err != nil {
-				log.Printf("error sending container logs to client: %s", err)
-				return
-			}
-			flusher.Flush()
-		}
-
-		cmd.Wait()
 	}))
 
 	return router

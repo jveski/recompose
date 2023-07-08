@@ -122,8 +122,6 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 		nodeStore.Set(fingerprint, meta)
 		log.Printf("received metadata for node: %s - ip=%s apiport=%d", fingerprint, meta.IP, meta.APIPort)
 
-		flusher := w.(rpc.WrappedResponseWriter).Unwrap().(http.Flusher)
-		flusher.Flush()
 		<-r.Context().Done()
 	}))
 

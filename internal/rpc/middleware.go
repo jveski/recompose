@@ -52,9 +52,3 @@ func (r *responseProxy) WriteHeader(status int) {
 	r.Status = status
 	r.ResponseWriter.WriteHeader(status)
 }
-
-func (r *responseProxy) Unwrap() http.ResponseWriter { return r.ResponseWriter }
-
-type WrappedResponseWriter interface {
-	Unwrap() http.ResponseWriter
-}

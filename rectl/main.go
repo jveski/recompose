@@ -129,7 +129,7 @@ func main() {
 	}
 
 	{
-		e := &common.ErrUntrustedServer{}
+		e := &rpc.ErrUntrustedServer{}
 		if errors.As(err, &e) {
 			fmt.Fprintf(os.Stderr, "The certificate presented by the server is not trusted. Use this command to trust it:\n\n  echo \"%s\" >> %s\n\n", e.Fingerprint, "~/.rectl/trustedcerts")
 			os.Exit(1)
@@ -224,7 +224,7 @@ func setup(c *cli.Context) (*appContext, error) {
 		return nil, fmt.Errorf("reading trusted certs file: %w", err)
 	}
 
-	client := common.NewClient(cert, c.Duration("timeout"), func(fingerprint string) bool {
+	client := rpc.NewClient(cert, c.Duration("timeout"), func(fingerprint string) bool {
 		_, ok := trusted[fingerprint]
 		return ok
 	})

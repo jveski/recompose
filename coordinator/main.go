@@ -57,7 +57,7 @@ func main() {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
 
-	agentClient = common.NewClient(cert, time.Minute*5, func(s string) bool {
+	agentClient = rpc.NewClient(cert, time.Minute*5, func(s string) bool {
 		current := state.Get()
 		return current != nil && current.NodesByFingerprint[s] != nil
 	})
