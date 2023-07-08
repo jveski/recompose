@@ -58,12 +58,12 @@ func main() {
 
 	agentClient = common.NewClient(cert, time.Minute*5, func(s string) bool {
 		current := state.Get()
-		return current != nil && current.ByNode[s] != nil
+		return current != nil && current.NodesByFingerprint[s] != nil
 	})
 
 	onSync, synced := block()
 	go common.RunLoop(webhookSignal, *gitPollingInterval, time.Minute*30, func() bool {
-		err := syncInventory(repoDir, state)
+		err := syncInventory(repoDir, state, nodeStore)
 		if err != nil {
 			log.Printf("error syncing inventory: %s", err)
 		}
@@ -75,10 +75,8 @@ func main() {
 	<-synced
 
 	svr := &http.Server{
-		Handler: common.WithLogging(
-			common.WithAuth(&authorizer{Container: state},
-				newApiHandler(state, nodeStore, agentClient))),
-		Addr: *privateAddr,
+		Handler: common.WithLogging(newApiHandler(state, nodeStore, agentClient)),
+		Addr:    *privateAddr,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			ClientAuth:   tls.RequireAnyClientCert,
