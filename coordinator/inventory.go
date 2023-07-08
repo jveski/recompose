@@ -19,8 +19,6 @@ import (
 	"github.com/jveski/recompose/internal/concurrency"
 )
 
-// TODO: Git integration tests
-
 type inventoryContainer = *concurrency.StateContainer[*indexedInventory]
 
 func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore) error {
@@ -34,11 +32,7 @@ func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore)
 	}
 	log.Printf("pulled git SHA: %s", sha)
 
-	inv := &indexedInventory{
-		GitSHA:               sha,
-		NodesByFingerprint:   make(map[string]*api.NodeInventory),
-		ClientsByFingerprint: make(map[string]struct{}),
-	}
+	inv := newIndexedInventory(sha)
 	err = readInventory(dir, inv, nms)
 	if err != nil {
 		return fmt.Errorf("reading inventory: %w", err)
@@ -110,11 +104,11 @@ func readInventory(dir string, inv *indexedInventory, nms *nodeMetadataStore) er
 	nms.lock.Lock()
 	defer nms.lock.Unlock()
 
-	for _, node := range nms.byFingerprint {
-		if _, ok := inv.NodesByFingerprint[node.Fingerprint]; ok {
+	for key := range nms.byFingerprint {
+		if _, ok := inv.NodesByFingerprint[key]; ok {
 			continue
 		}
-		delete(nms.byFingerprint, node.Fingerprint)
+		delete(nms.byFingerprint, key)
 	}
 
 	return nil
@@ -160,4 +154,12 @@ type indexedInventory struct {
 	GitSHA               string
 	NodesByFingerprint   map[string]*api.NodeInventory
 	ClientsByFingerprint map[string]struct{}
+}
+
+func newIndexedInventory(gitSHA string) *indexedInventory {
+	return &indexedInventory{
+		GitSHA:               gitSHA,
+		NodesByFingerprint:   make(map[string]*api.NodeInventory),
+		ClientsByFingerprint: make(map[string]struct{}),
+	}
 }
