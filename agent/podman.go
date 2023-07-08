@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -165,13 +166,9 @@ func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
 
 	// Decrypt secrets
 	for i, secret := range spec.Secrets {
-		resp, err := client.Post(client.BaseURL+"/decrypt", "", bytes.NewBufferString(secret.Ciphertext))
+		resp, err := client.POST(context.Background(), client.BaseURL+"/decrypt", bytes.NewBufferString(secret.Ciphertext))
 		if err != nil {
 			return fmt.Errorf("decrypting secret for env var %q: %s", secret.EnvVar, err)
-		}
-		if resp.StatusCode != 200 {
-			resp.Body.Close()
-			return fmt.Errorf("server error (status %d) while decrypting secret for env var %q", resp.StatusCode, secret.EnvVar)
 		}
 
 		buf, err := io.ReadAll(resp.Body)

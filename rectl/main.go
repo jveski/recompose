@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -105,12 +104,7 @@ func main() {
 						q.Add("since", strconv.Itoa(int(time.Now().Add(-since).Unix())))
 					}
 
-					req, err := http.NewRequestWithContext(c.Context, "GET", cc.BaseURL+"/nodes/"+nodeFingerprint+"/logs?"+q.Encode(), nil)
-					if err != nil {
-						return err
-					}
-
-					resp, err := cc.Client.Do(req)
+					resp, err := cc.Client.GET(c.Context, cc.BaseURL+"/nodes/"+nodeFingerprint+"/logs?"+q.Encode())
 					if err != nil {
 						return err
 					}
@@ -137,7 +131,7 @@ func main() {
 	}
 
 	{
-		e := &errUntrustedClient{}
+		e := &rpc.ErrUntrustedClient{}
 		if errors.As(err, &e) {
 			fmt.Fprintf(os.Stderr, "The server does not trust your client certificate.\nAdd its fingerprint to the cluster's `cluster.toml` like this:\n\n[[ client ]]\nfingerprint = \"%s\"\n\n", e.Fingerprint)
 			os.Exit(1)
@@ -149,25 +143,15 @@ func main() {
 }
 
 func getClusterStatus(c *cli.Context, cc *appContext) (*common.ClusterState, error) {
-	req, err := http.NewRequestWithContext(c.Context, "GET", cc.BaseURL+"/status", nil)
+	resp, err := cc.Client.GET(c.Context, cc.BaseURL+"/status")
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
-	resp, err := cc.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode == 403 {
-		return nil, &errUntrustedClient{Fingerprint: cc.CertFingerprint}
-	}
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
-	}
 	if resp.StatusCode == 206 {
 		fmt.Fprintf(os.Stderr, "warning: partial results returned from server because one or more agents could not be reached\n")
 	}
-	defer resp.Body.Close()
 
 	body := &common.ClusterState{}
 	err = json.NewDecoder(resp.Body).Decode(body)
@@ -200,12 +184,6 @@ func resolveContainerName(cluster *common.ClusterState, ref string) (string, str
 	}
 	return "", "", errors.New("container not found")
 }
-
-type errUntrustedClient struct {
-	Fingerprint string
-}
-
-func (e *errUntrustedClient) Error() string { return "server does not trust this client" }
 
 func setup(c *cli.Context) (*appContext, error) {
 	homedir, err := os.UserHomeDir()
@@ -281,7 +259,7 @@ func durationToString(d time.Duration) string {
 }
 
 type appContext struct {
-	Client          *http.Client
+	Client          *rpc.Client
 	CertFingerprint string
 	BaseURL         string
 }

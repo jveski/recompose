@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -63,20 +62,12 @@ func register(client *coordClient, ip string, port uint) error {
 	ctx, done := context.WithTimeout(context.Background(), common.Jitter(time.Minute*15))
 	defer done()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", client.BaseURL+"/registernode?"+form.Encode(), nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := client.Do(req)
+	resp, err := client.POST(ctx, client.BaseURL+"/registernode?"+form.Encode(), nil)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil // connection recycling timeouts are expected
 		}
 		return err
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("unexpected status from server: %d", resp.StatusCode)
 	}
 
 	log.Printf("wrote node metadata to coordinator")

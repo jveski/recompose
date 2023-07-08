@@ -17,11 +17,6 @@ func (a AuthorizerFunc) TrustsCert(fingerprint string) bool { return a(fingerpri
 
 func WithAuth(auth Authorizer, next httprouter.Handle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-			w.WriteHeader(401)
-			return
-		}
-
 		fingerprint := GetCertFingerprint(r.TLS.PeerCertificates[0].Raw)
 
 		if auth == nil || !auth.TrustsCert(fingerprint) {

@@ -1,45 +1,75 @@
 package rpc
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
 
-func NewClient(cert tls.Certificate, timeout time.Duration, auth Authorizer) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSHandshakeTimeout: time.Second * 15,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // this is safe because we verify the fingerprint in VerifyPeerCertificate
-				Certificates:       []tls.Certificate{cert},
-				VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-					for _, cert := range rawCerts {
-						if auth.TrustsCert(GetCertFingerprint(cert)) {
-							return nil
-						}
-					}
+type Client struct {
+	*http.Client
+}
 
-					e := &ErrUntrustedServer{}
-					if len(rawCerts) > 0 {
-						e.Fingerprint = GetCertFingerprint(rawCerts[0])
-					} else {
-						e.Fingerprint = "unknown"
-					}
-					return e
+func NewClient(cert tls.Certificate, timeout time.Duration, auth Authorizer) *Client {
+	return &Client{
+		Client: &http.Client{
+			Timeout: timeout,
+			Transport: &http.Transport{
+				TLSHandshakeTimeout: time.Second * 15,
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true, // this is safe because we verify the fingerprint in VerifyPeerCertificate
+					Certificates:       []tls.Certificate{cert},
+					VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+						for _, cert := range rawCerts {
+							if auth.TrustsCert(GetCertFingerprint(cert)) {
+								return nil
+							}
+						}
+
+						return &ErrUntrustedServer{Fingerprint: GetCertFingerprint(rawCerts[0])}
+					},
 				},
 			},
 		},
 	}
 }
 
-type ErrUntrustedServer struct {
-	Fingerprint string
+func (c *Client) GET(ctx context.Context, url string) (*http.Response, error) {
+	return c.do(ctx, "GET", url, nil)
 }
 
-func (e *ErrUntrustedServer) Error() string { return "untrusted server certificate" }
+func (c *Client) POST(ctx context.Context, url string, body io.Reader) (*http.Response, error) {
+	return c.do(ctx, "POST", url, body)
+}
+
+func (c *Client) do(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == 403 {
+		defer resp.Body.Close()
+		t := c.Transport.(*http.Transport)
+		return nil, &ErrUntrustedClient{Fingerprint: GetCertFingerprint(t.TLSClientConfig.Certificates[0].Leaf.Raw)}
+	}
+	if resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server error status: %d, body: %s", resp.StatusCode, body)
+	}
+
+	return resp, nil
+}
 
 func NewServer(addr string, cert tls.Certificate, handler http.Handler) *http.Server {
 	return &http.Server{
@@ -52,3 +82,15 @@ func NewServer(addr string, cert tls.Certificate, handler http.Handler) *http.Se
 		},
 	}
 }
+
+type ErrUntrustedServer struct {
+	Fingerprint string
+}
+
+func (e *ErrUntrustedServer) Error() string { return "untrusted server certificate" }
+
+type ErrUntrustedClient struct {
+	Fingerprint string
+}
+
+func (e *ErrUntrustedClient) Error() string { return "server does not trust this client" }

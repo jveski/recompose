@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,7 +91,7 @@ func main() {
 }
 
 type coordClient struct {
-	*http.Client
+	*rpc.Client
 	BaseURL string
 }
 

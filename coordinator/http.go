@@ -50,7 +50,7 @@ func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
 	return mux
 }
 
-func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agentClient *http.Client) http.Handler {
+func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agentClient *rpc.Client) http.Handler {
 	var (
 		router     = httprouter.New()
 		agentAuth  = &agentAuthorizer{Container: state}
@@ -152,7 +152,7 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 	return router
 }
 
-func newProxyHandler(nodeStore *nodeMetadataStore, agentClient *http.Client, upstreamPath string) httprouter.Handle {
+func newProxyHandler(nodeStore *nodeMetadataStore, agentClient *rpc.Client, upstreamPath string) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		fingerprint := p.ByName("fingerprint")
 
@@ -174,18 +174,10 @@ func newProxyHandler(nodeStore *nodeMetadataStore, agentClient *http.Client, ups
 	}
 }
 
-func getAgentStatus(ctx context.Context, agentClient *http.Client, node *nodeMetadata) ([]*common.ContainerState, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("https://%s:%d/ps", node.IP, node.APIPort), nil)
+func getAgentStatus(ctx context.Context, agentClient *rpc.Client, node *nodeMetadata) ([]*common.ContainerState, error) {
+	resp, err := agentClient.GET(ctx, fmt.Sprintf("https://%s:%d/ps", node.IP, node.APIPort))
 	if err != nil {
 		return nil, err
-	}
-
-	resp, err := agentClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
 

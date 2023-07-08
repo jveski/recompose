@@ -28,13 +28,6 @@ func syncInventory(client *coordClient, file string, state inventoryContainer) e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 403 {
-		return fmt.Errorf("the coordinator does not trust your cert - add it to cluster.toml")
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("server error status %d", resp.StatusCode)
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("downloading inventory from coordinator: %w", err)

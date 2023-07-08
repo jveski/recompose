@@ -35,7 +35,7 @@ func main() {
 		state         = &common.StateContainer[*indexedInventory]{}
 		nodeStore     = newNodeMetadataStore()
 		repoDir       = "./repo"
-		agentClient   *http.Client
+		agentClient   *rpc.Client
 	)
 
 	if err := os.MkdirAll(repoDir, 0755); err != nil {
