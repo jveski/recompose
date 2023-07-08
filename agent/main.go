@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -83,15 +82,9 @@ func main() {
 		return err == nil
 	})
 
-	svr := &http.Server{
-		Addr:    fmt.Sprintf(":%d", *port),
-		Handler: rpc.WithLogging(newApiHandler(&staticAuthorizer{Fingerprint: *coordinatorFingerprint})),
-		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.RequireAnyClientCert,
-			MinVersion:   tls.VersionTLS12,
-		},
-	}
+	svr := rpc.NewServer(
+		fmt.Sprintf(":%d", *port), cert,
+		rpc.WithLogging(newApiHandler(&staticAuthorizer{Fingerprint: *coordinatorFingerprint})))
 
 	if err := svr.ListenAndServeTLS("", ""); err != nil {
 		log.Fatalf("fatal error while running API HTTP server: %s", err)

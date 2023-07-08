@@ -40,3 +40,15 @@ type ErrUntrustedServer struct {
 }
 
 func (e *ErrUntrustedServer) Error() string { return "untrusted server certificate" }
+
+func NewServer(addr string, cert tls.Certificate, handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler: WithLogging(handler),
+		Addr:    addr,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.RequireAnyClientCert,
+			MinVersion:   tls.VersionTLS12,
+		},
+	}
+}

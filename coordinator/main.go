@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -75,15 +74,8 @@ func main() {
 	// wait for initial inventory sync before starting server to ensure any incoming requests are authorized appropriately
 	<-synced
 
-	svr := &http.Server{
-		Handler: rpc.WithLogging(newApiHandler(state, nodeStore, agentClient)),
-		Addr:    *privateAddr,
-		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.RequireAnyClientCert,
-			MinVersion:   tls.VersionTLS12,
-		},
-	}
+	svr := rpc.NewServer(*privateAddr, cert,
+		rpc.WithLogging(newApiHandler(state, nodeStore, agentClient)))
 
 	if err := svr.ListenAndServeTLS("", ""); err != nil {
 		log.Fatalf("fatal error while running private API HTTP server: %s", err)
