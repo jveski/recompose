@@ -57,23 +57,7 @@ func main() {
 		return
 	}
 
-	{
-		e := &rpc.ErrUntrustedServer{}
-		if errors.As(err, &e) {
-			fmt.Fprintf(os.Stderr, "The certificate presented by the server is not trusted. Use this command to trust it:\n\n  echo \"%s\" >> %s\n\n", e.Fingerprint, "~/.rectl/trustedcerts")
-			os.Exit(1)
-		}
-	}
-
-	{
-		e := &rpc.ErrUntrustedClient{}
-		if errors.As(err, &e) {
-			fmt.Fprintf(os.Stderr, "The server does not trust your client certificate.\nAdd its fingerprint to the cluster's `cluster.toml` like this:\n\n[[ client ]]\nfingerprint = \"%s\"\n\n", e.Fingerprint)
-			os.Exit(1)
-		}
-	}
-
-	fmt.Fprintf(os.Stderr, "error: %s\n", err)
+	fmt.Fprint(os.Stderr, getErrorString(err))
 	os.Exit(1)
 }
 
@@ -104,6 +88,7 @@ func setup(c *cli.Context) (*appContext, error) {
 		return ok
 	}))
 
+	// TODO: Refactor
 	var url string
 	chunks := strings.Split(c.String("coordinator"), ":")
 	if len(chunks) == 1 {
@@ -135,4 +120,18 @@ func loadTrustedCerts(dir string) (map[string]struct{}, error) {
 	}
 
 	return m, nil
+}
+
+func getErrorString(err error) string {
+	es := &rpc.ErrUntrustedServer{}
+	if errors.As(err, &es) {
+		return fmt.Sprintf("The certificate presented by the server is not trusted. Use this command to trust it:\n\n  echo \"%s\" >> %s\n\n", es.Fingerprint, "~/.rectl/trustedcerts")
+	}
+
+	ec := &rpc.ErrUntrustedClient{}
+	if errors.As(err, &ec) {
+		return fmt.Sprintf("The server does not trust your client certificate.\nAdd its fingerprint to the cluster's `cluster.toml` like this:\n\n[[ client ]]\nfingerprint = \"%s\"\n\n", ec.Fingerprint)
+	}
+
+	return fmt.Sprintf("error: %s\n", err)
 }
