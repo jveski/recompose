@@ -50,19 +50,28 @@ func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
 	return mux
 }
 
-func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agentClient *rpc.Client) http.Handler {
+func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, client *rpc.Client) http.Handler {
 	var (
 		router     = httprouter.New()
 		agentAuth  = &agentAuthorizer{Container: state}
 		clientAuth = &clientAuthorizer{Container: state}
 	)
 
+	router.GET("/nodeinventory", rpc.WithAuth(agentAuth, newGetNodeInventoryHandler(state)))
+	router.POST("/decrypt", rpc.WithAuth(agentAuth, newDecryptHandler()))
+	router.POST("/registernode", rpc.WithAuth(agentAuth, newRegisterNodeHandler(nodeStore)))
+	router.GET("/nodes/:fingerprint/logs", rpc.WithAuth(clientAuth, newProxyHandler(nodeStore, client, "/logs")))
+	router.GET("/status", rpc.WithAuth(clientAuth, newGetStatusHandler(nodeStore, client)))
+
+	return router
+}
+
+func newGetNodeInventoryHandler(state inventoryContainer) httprouter.Handle {
 	// inventoryResponseLock is held while we return an inventory to a node
 	// in order to prevent excessive concurrency in cases where many nodes are connected.
 	inventoryResponseLock := sync.Mutex{}
 
-	// Get the requesting node's inventory
-	router.GET("/nodeinventory", rpc.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		q := r.URL.Query()
 		after := q.Get("after")
 		ctx := r.Context()
@@ -94,10 +103,11 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 				<-watcher
 			}
 		}
-	}))
+	}
+}
 
-	// Decrypt a secret (in the request body)
-	router.POST("/decrypt", rpc.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+func newDecryptHandler() httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		cmd := exec.CommandContext(r.Context(), "age", "--decrypt", "--identity=identity.txt")
 		cmd.Stdin = r.Body
 		out, err := cmd.CombinedOutput()
@@ -107,10 +117,11 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 			return
 		}
 		w.Write(out[:len(out)-1]) // trim off trailing newline
-	}))
+	}
+}
 
-	// Register a node's ephemeral metadata
-	router.POST("/registernode", rpc.WithAuth(agentAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+func newRegisterNodeHandler(store *nodeMetadataStore) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		q := r.URL.Query()
 		fingerprint := q.Get("fingerprint")
 		apiport, _ := strconv.Atoi(q.Get("apiport"))
@@ -119,45 +130,18 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 			IP:          q.Get("ip"),
 			APIPort:     uint(apiport),
 		}
-		nodeStore.Set(fingerprint, meta)
+		store.Set(fingerprint, meta)
 		log.Printf("received metadata for node: %s - ip=%s apiport=%d", fingerprint, meta.IP, meta.APIPort)
 
 		<-r.Context().Done()
-	}))
-
-	// Proxy to agent APIs
-	router.GET("/nodes/:fingerprint/logs", rpc.WithAuth(clientAuth, newProxyHandler(nodeStore, agentClient, "/logs")))
-
-	// Get the status of the entire cluster
-	router.GET("/status", rpc.WithAuth(clientAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		resp := &api.ClusterState{}
-
-		var partial bool
-		for _, node := range nodeStore.List() {
-			// TODO: Timeouts
-			containers, err := getAgentStatus(r.Context(), agentClient, node)
-			if err != nil {
-				log.Printf("error while getting agent status: %s", err)
-				partial = true
-				continue
-			}
-			resp.Containers = append(resp.Containers, containers...)
-		}
-
-		if partial {
-			w.WriteHeader(206)
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-
-	return router
+	}
 }
 
-func newProxyHandler(nodeStore *nodeMetadataStore, agentClient *rpc.Client, upstreamPath string) httprouter.Handle {
+func newProxyHandler(store *nodeMetadataStore, client *rpc.Client, upstreamPath string) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		fingerprint := p.ByName("fingerprint")
 
-		metadata := nodeStore.Get(fingerprint)
+		metadata := store.Get(fingerprint)
 		if metadata == nil || metadata.APIPort == 0 {
 			http.Error(w, "node with the given fingerprint is not known", 400)
 			return
@@ -170,13 +154,36 @@ func newProxyHandler(nodeStore *nodeMetadataStore, agentClient *rpc.Client, upst
 			Host:   fmt.Sprintf("%s:%d", metadata.IP, metadata.APIPort),
 		}
 		proxy := httputil.NewSingleHostReverseProxy(upstream)
-		proxy.Transport = agentClient.Transport
+		proxy.Transport = client.Transport
 		proxy.ServeHTTP(w, r)
 	}
 }
 
-func getAgentStatus(ctx context.Context, agentClient *rpc.Client, node *nodeMetadata) ([]*api.ContainerState, error) {
-	resp, err := agentClient.GET(ctx, fmt.Sprintf("https://%s:%d/ps", node.IP, node.APIPort))
+func newGetStatusHandler(store *nodeMetadataStore, client *rpc.Client) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		resp := &api.ClusterState{}
+
+		var partial bool
+		for _, node := range store.List() {
+			// TODO: Timeouts
+			containers, err := getAgentStatus(r.Context(), client, node)
+			if err != nil {
+				log.Printf("error while getting agent status: %s", err)
+				partial = true
+				continue
+			}
+			resp.Containers = append(resp.Containers, containers...)
+		}
+
+		if partial {
+			w.WriteHeader(206)
+		}
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+func getAgentStatus(ctx context.Context, client *rpc.Client, node *nodeMetadata) ([]*api.ContainerState, error) {
+	resp, err := client.GET(ctx, fmt.Sprintf("https://%s:%d/ps", node.IP, node.APIPort))
 	if err != nil {
 		return nil, err
 	}
