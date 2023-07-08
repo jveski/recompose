@@ -11,12 +11,20 @@ func RunLoop(signal <-chan struct{}, resync, maxRetry time.Duration, fn func() b
 	ch := make(chan struct{}, 1)
 	ch <- struct{}{} // initial sync
 
-	go func() {
-		for range signal {
-			ch <- struct{}{}
-		}
-		close(ch)
-	}()
+	if signal == nil {
+		go func() {
+			for {
+				ch <- struct{}{}
+			}
+		}()
+	} else {
+		go func() {
+			for range signal {
+				ch <- struct{}{}
+			}
+			close(ch)
+		}()
+	}
 
 	if resync > 0 {
 		go func() {

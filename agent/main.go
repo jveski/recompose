@@ -39,10 +39,12 @@ func main() {
 		log.Fatalf("fatal error while generating certificate: %s", err)
 	}
 
+	// The client used to access the coordinator API only trusts the known server cert fingerprint
 	client.Client = rpc.NewClient(cert, time.Minute*45, rpc.AuthorizerFunc(func(fingerprint string) bool {
 		return fingerprint == *coordinatorFingerprint
 	}))
 
+	// Podman is sync'd periodically and when the inventory state changes
 	go concurrency.RunLoop(
 		state.Watch(context.Background()),
 		time.Minute*30, time.Hour,
@@ -54,14 +56,8 @@ func main() {
 			return err == nil
 		})
 
-	tightloop := make(chan struct{})
-	go func() {
-		for {
-			tightloop <- struct{}{}
-		}
-	}()
-
-	go concurrency.RunLoop(tightloop, 0, time.Minute*15, func() bool {
+	// The inventory is retrieved from the coordinator in a loop using long polling
+	go concurrency.RunLoop(nil, 0, time.Minute*15, func() bool {
 		err := syncInventory(client, inventoryFile, state)
 		if err != nil {
 			log.Printf("error getting inventory from coordinator: %s", err)
@@ -69,7 +65,10 @@ func main() {
 		return err == nil
 	})
 
-	go concurrency.RunLoop(tightloop, 0, time.Minute, func() bool {
+	// Agents register their internal API endpoints with the coordinator in a loop using long polling.
+	// The long polling approach allows them to more quickly re-register when coordinators become available
+	// while generating minimal request volume during steady state operation.
+	go concurrency.RunLoop(nil, 0, time.Minute, func() bool {
 		ip := *ip
 		if ip == "" {
 			ip = getOutboundIP().String()
@@ -81,6 +80,7 @@ func main() {
 		return err == nil
 	})
 
+	// This server exposes information to the coordinator about the current state of containers managed by this agent.
 	svr := rpc.NewServer(
 		fmt.Sprintf(":%d", *port), cert,
 		rpc.WithLogging(newApiHandler(&staticAuthorizer{Fingerprint: *coordinatorFingerprint})))
