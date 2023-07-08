@@ -16,6 +16,7 @@ import (
 	"github.com/jveski/recompose/internal/rpc"
 )
 
+// TODO: Refactor to share with client
 type staticAuthorizer struct {
 	Fingerprint string
 }

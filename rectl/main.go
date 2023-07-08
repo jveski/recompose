@@ -20,13 +20,13 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "coordinator",
-				Usage:    "address of the Recompose coordinator i.e. `recompose.mydomain` or `recompose.mydomain:8124`",
+				Usage:    "Address of the Recompose coordinator i.e. `recompose.mydomain` or `recompose.mydomain:8124`",
 				Required: true,
 				EnvVars:  []string{"RECOMPOSE_COORDINATOR"},
 			},
 			&cli.DurationFlag{
 				Name:  "timeout",
-				Usage: "timeout when sending requests to the Recompose coordinator",
+				Usage: "Timeout when sending requests to the Recompose coordinator",
 				Value: time.Second * 15,
 			},
 		},
@@ -43,7 +43,7 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.DurationFlag{
 						Name:  "since",
-						Usage: "start of the time window to query",
+						Usage: "Start of the time window to query",
 					},
 				},
 				Action: logsCmd,
