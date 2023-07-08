@@ -19,6 +19,8 @@ import (
 	"github.com/jveski/recompose/internal/concurrency"
 )
 
+// TODO: Git integration tests
+
 type inventoryContainer = *concurrency.StateContainer[*indexedInventory]
 
 func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore) error {

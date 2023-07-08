@@ -24,6 +24,8 @@ import (
 	"github.com/jveski/recompose/internal/rpc"
 )
 
+// TODO: Tests for webhook handler, register node handler, status handler
+
 func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
 	mux := http.NewServeMux()
 

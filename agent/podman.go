@@ -212,6 +212,7 @@ type expandedContainerSpec struct {
 	MountIDs         []string // aligned with Config.Files
 }
 
+// TODO: Unit tests
 func getPodmanFlags(c *expandedContainerSpec) []string {
 	args := []string{"run", "-d", "--name", c.Spec.Name, "--label=createdBy=recompose", "--label=recomposeHash=" + c.Spec.Hash}
 

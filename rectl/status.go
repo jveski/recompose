@@ -12,6 +12,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// TODO: Tests using fake api server
+
 func statusCmd(c *cli.Context) error {
 	cc, err := setup(c)
 	if err != nil {

@@ -60,11 +60,9 @@ func resolveContainerName(cluster *api.ClusterState, ref string) (string, string
 		if candidateName != "" {
 			return "", "", errors.New("multiple containers have this name - reference a specific one using: <container name>@<node fingerprint prefix>")
 		}
-		if len(chunks) == 1 {
+		if len(chunks) == 1 || strings.HasPrefix(container.NodeFingerprint, chunks[1]) {
 			candidateName = container.Name
 			candidateFingerprint = container.NodeFingerprint
-		} else if strings.HasPrefix(container.NodeFingerprint, chunks[1]) {
-			return container.Name, container.NodeFingerprint, nil
 		}
 	}
 	if candidateName != "" {
