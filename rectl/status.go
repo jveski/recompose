@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"text/tabwriter"
@@ -11,8 +12,6 @@ import (
 	"github.com/jveski/recompose/internal/api"
 	"github.com/urfave/cli/v2"
 )
-
-// TODO: Tests using fake api server
 
 func statusCmd(c *cli.Context) error {
 	cc, err := setup(c)
@@ -26,7 +25,12 @@ func statusCmd(c *cli.Context) error {
 	}
 	sort.Slice(cluster.Containers, func(i, j int) bool { return cluster.Containers[i].Name < cluster.Containers[j].Name })
 
-	tr := tabwriter.NewWriter(os.Stdout, 6, 6, 4, ' ', 0)
+	printClusterStatus(cluster, os.Stdout)
+	return nil
+}
+
+func printClusterStatus(cluster *api.ClusterState, w io.Writer) {
+	tr := tabwriter.NewWriter(w, 6, 6, 4, ' ', 0)
 	fmt.Fprintf(tr, "NAME\tNODE\tCREATED\tRESTARTED\n")
 	now := time.Now()
 	for _, container := range cluster.Containers {
@@ -36,7 +40,7 @@ func statusCmd(c *cli.Context) error {
 		}
 		fmt.Fprintf(tr, "%s\t%s\t%s\t%s\n", container.Name, container.NodeFingerprint[:6], durationToString(now.Sub(container.Created)), lastRestart)
 	}
-	return tr.Flush()
+	tr.Flush()
 }
 
 func getClusterStatus(c *cli.Context, cc *appContext) (*api.ClusterState, error) {
