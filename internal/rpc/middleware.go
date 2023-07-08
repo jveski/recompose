@@ -15,6 +15,10 @@ type AuthorizerFunc func(fingerprint string) bool
 
 func (a AuthorizerFunc) TrustsCert(fingerprint string) bool { return a(fingerprint) }
 
+func TrustOneCert(finger string) Authorizer {
+	return AuthorizerFunc(func(fingerprint string) bool { return fingerprint == finger })
+}
+
 func WithAuth(auth Authorizer, next httprouter.Handle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		fingerprint := GetCertFingerprint(r.TLS.PeerCertificates[0].Raw)

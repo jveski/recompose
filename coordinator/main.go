@@ -50,10 +50,7 @@ func main() {
 	}
 
 	// Client used to access agents should only trust known agents as per the inventory
-	agentClient = rpc.NewClient(cert, time.Minute*5, rpc.AuthorizerFunc(func(s string) bool {
-		current := state.Get()
-		return current != nil && current.NodesByFingerprint[s] != nil
-	}))
+	agentClient = rpc.NewClient(cert, time.Minute*5, &agentAuthorizer{Container: state})
 
 	// Block initialization until the inventory has been sync'd to avoid serving empty an empty inventory.
 	err = syncInventory(repoDir, state, nodeStore)

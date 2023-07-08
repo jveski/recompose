@@ -35,14 +35,9 @@ func TestIntegration(t *testing.T) {
 				require.NoError(t, err)
 				defer resp.Body.Close()
 			},
-			Handler: func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-			},
-			AuthorizeClient: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == cliFprint
-			}),
-			AuthorizeServer: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == svrFprint
-			}),
+			Handler:         func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {},
+			AuthorizeClient: TrustOneCert(cliFprint),
+			AuthorizeServer: TrustOneCert(svrFprint),
 		},
 		{
 			Name: "untrusted client",
@@ -52,14 +47,9 @@ func TestIntegration(t *testing.T) {
 				require.ErrorAs(t, err, &e)
 				assert.Equal(t, cliFprint, e.Fingerprint)
 			},
-			Handler: func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-			},
-			AuthorizeClient: AuthorizerFunc(func(fingerprint string) bool {
-				return false
-			}),
-			AuthorizeServer: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == svrFprint
-			}),
+			Handler:         func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {},
+			AuthorizeClient: AuthorizerFunc(func(fingerprint string) bool { return false }),
+			AuthorizeServer: TrustOneCert(svrFprint),
 		},
 		{
 			Name: "untrusted server",
@@ -69,14 +59,9 @@ func TestIntegration(t *testing.T) {
 				require.ErrorAs(t, err, &e)
 				assert.Equal(t, svrFprint, e.Fingerprint)
 			},
-			Handler: func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-			},
-			AuthorizeClient: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == cliFprint
-			}),
-			AuthorizeServer: AuthorizerFunc(func(fingerprint string) bool {
-				return false
-			}),
+			Handler:         func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {},
+			AuthorizeClient: TrustOneCert(cliFprint),
+			AuthorizeServer: AuthorizerFunc(func(fingerprint string) bool { return false }),
 		},
 		{
 			Name: "50x",
@@ -88,12 +73,8 @@ func TestIntegration(t *testing.T) {
 				w.WriteHeader(502)
 				w.Write([]byte("test error"))
 			},
-			AuthorizeClient: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == cliFprint
-			}),
-			AuthorizeServer: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == svrFprint
-			}),
+			AuthorizeClient: TrustOneCert(cliFprint),
+			AuthorizeServer: TrustOneCert(svrFprint),
 		},
 		{
 			Name: "20x && != 200",
@@ -105,12 +86,8 @@ func TestIntegration(t *testing.T) {
 			Handler: func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 				w.WriteHeader(204)
 			},
-			AuthorizeClient: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == cliFprint
-			}),
-			AuthorizeServer: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == svrFprint
-			}),
+			AuthorizeClient: TrustOneCert(cliFprint),
+			AuthorizeServer: TrustOneCert(svrFprint),
 		},
 		{
 			Name: "20x && != 200",
@@ -123,12 +100,8 @@ func TestIntegration(t *testing.T) {
 			Handler: func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 				w.WriteHeader(204)
 			},
-			AuthorizeClient: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == cliFprint
-			}),
-			AuthorizeServer: AuthorizerFunc(func(fingerprint string) bool {
-				return fingerprint == svrFprint
-			}),
+			AuthorizeClient: TrustOneCert(cliFprint),
+			AuthorizeServer: TrustOneCert(svrFprint),
 		},
 	}
 

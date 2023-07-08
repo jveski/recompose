@@ -16,13 +16,6 @@ import (
 	"github.com/jveski/recompose/internal/rpc"
 )
 
-// TODO: Refactor to share with client
-type staticAuthorizer struct {
-	Fingerprint string
-}
-
-func (s *staticAuthorizer) TrustsCert(fingerprint string) bool { return s.Fingerprint == fingerprint }
-
 func newApiHandler(auth rpc.Authorizer) http.Handler {
 	router := httprouter.New()
 

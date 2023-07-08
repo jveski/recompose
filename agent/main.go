@@ -40,9 +40,8 @@ func main() {
 	}
 
 	// The client used to access the coordinator API only trusts the known server cert fingerprint
-	client.Client = rpc.NewClient(cert, time.Minute*45, rpc.AuthorizerFunc(func(fingerprint string) bool {
-		return fingerprint == *coordinatorFingerprint
-	}))
+	coordAuth := rpc.TrustOneCert(*coordinatorFingerprint)
+	client.Client = rpc.NewClient(cert, time.Minute*45, coordAuth)
 
 	// Podman is sync'd periodically and when the inventory state changes
 	go concurrency.RunLoop(
@@ -83,7 +82,7 @@ func main() {
 	// This server exposes information to the coordinator about the current state of containers managed by this agent.
 	svr := rpc.NewServer(
 		fmt.Sprintf(":%d", *port), cert,
-		rpc.WithLogging(newApiHandler(&staticAuthorizer{Fingerprint: *coordinatorFingerprint})))
+		rpc.WithLogging(newApiHandler(coordAuth)))
 
 	if err := svr.ListenAndServeTLS("", ""); err != nil {
 		log.Fatalf("fatal error while running API HTTP server: %s", err)
