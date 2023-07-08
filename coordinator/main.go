@@ -37,7 +37,7 @@ func main() {
 	// The public server exposes Git webhook endpoints - only served when configured
 	if *publicAddr != "" {
 		go func() {
-			err := http.ListenAndServe(*publicAddr, rpc.WithLogging(newWebhookHandler(webhookKey, webhookSignal)))
+			err := http.ListenAndServe(*publicAddr, rpc.WithLogging(newPublicHandler(webhookKey, webhookSignal)))
 			if err != nil {
 				log.Fatalf("fatal error while running public HTTP server: %s", err)
 			}

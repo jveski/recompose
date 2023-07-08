@@ -24,32 +24,10 @@ import (
 	"github.com/jveski/recompose/internal/rpc"
 )
 
-// TODO: Tests for webhook handler, register node handler, status handler
-
-func newWebhookHandler(key []byte, signal chan<- struct{}) http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/hook", func(w http.ResponseWriter, r *http.Request) {
-		hash := hmac.New(sha256.New, key)
-
-		if _, err := io.Copy(hash, r.Body); err != nil {
-			w.WriteHeader(400)
-			return
-		}
-
-		sig := []byte(strings.TrimPrefix(r.Header.Get("X-Hub-Signature-256"), "sha256="))
-		if !hmac.Equal([]byte(hex.EncodeToString(hash.Sum(nil))), sig) {
-			w.WriteHeader(401)
-			return
-		}
-
-		select {
-		case signal <- struct{}{}:
-		default:
-		}
-	})
-
-	return mux
+func newPublicHandler(hookKey []byte, hookSignal chan<- struct{}) http.Handler {
+	router := httprouter.New()
+	router.POST("/hook", newWebhookHandler(hookKey, hookSignal))
+	return router
 }
 
 func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, client *rpc.Client, statusTimeout time.Duration) http.Handler {
@@ -66,6 +44,24 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, clien
 	router.GET("/status", rpc.WithAuth(clientAuth, newGetStatusHandler(nodeStore, client, statusTimeout)))
 
 	return router
+}
+
+func newWebhookHandler(key []byte, signal chan<- struct{}) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		hash := hmac.New(sha256.New, key)
+		io.Copy(hash, r.Body)
+
+		sig := []byte(strings.TrimPrefix(r.Header.Get("X-Hub-Signature-256"), "sha256="))
+		if !hmac.Equal([]byte(hex.EncodeToString(hash.Sum(nil))), sig) {
+			w.WriteHeader(401)
+			return
+		}
+
+		select {
+		case signal <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func newGetNodeInventoryHandler(state inventoryContainer) httprouter.Handle {
