@@ -43,7 +43,7 @@ jobs:
           pre_command: export CGO_ENABLED=0
           binary_name: "recompose-coordinator"
 
-  coordinator:
+  cli:
     name: CLI Release
     runs-on: ubuntu-latest
     strategy:
