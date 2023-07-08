@@ -17,9 +17,10 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/concurrency"
 )
 
-type inventoryContainer = *common.StateContainer[*indexedInventory]
+type inventoryContainer = *concurrency.StateContainer[*indexedInventory]
 
 func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore) error {
 	sha, err := gitPull(dir)

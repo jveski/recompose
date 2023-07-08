@@ -8,9 +8,10 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/concurrency"
 )
 
-type inventoryContainer = *common.StateContainer[*common.NodeInventory]
+type inventoryContainer = *concurrency.StateContainer[*common.NodeInventory]
 
 func syncInventory(client *coordClient, file string, state inventoryContainer) error {
 	current := state.Get()

@@ -134,6 +134,7 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 
 		var partial bool
 		for _, node := range nodeStore.List() {
+			// TODO: Timeouts
 			containers, err := getAgentStatus(r.Context(), agentClient, node)
 			if err != nil {
 				log.Printf("error while getting agent status: %s", err)

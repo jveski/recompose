@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/concurrency"
 	"github.com/jveski/recompose/internal/rpc"
 )
 
@@ -32,7 +32,7 @@ func main() {
 
 	var (
 		webhookSignal = make(chan struct{}, 1)
-		state         = &common.StateContainer[*indexedInventory]{}
+		state         = &concurrency.StateContainer[*indexedInventory]{}
 		nodeStore     = newNodeMetadataStore()
 		repoDir       = "./repo"
 		agentClient   *rpc.Client
@@ -62,7 +62,7 @@ func main() {
 	}))
 
 	onSync, synced := block()
-	go common.RunLoop(webhookSignal, *gitPollingInterval, time.Minute*30, func() bool {
+	go concurrency.RunLoop(webhookSignal, *gitPollingInterval, time.Minute*30, func() bool {
 		err := syncInventory(repoDir, state, nodeStore)
 		if err != nil {
 			log.Printf("error syncing inventory: %s", err)

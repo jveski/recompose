@@ -85,6 +85,7 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 			if !e.Exited {
 				continue // already running
 			}
+			// TODO: Remove this code
 			if e.Labels != nil && e.Labels["kickstart"] == "false" {
 				continue // should not be kickstarted
 			}
@@ -221,11 +222,6 @@ func getPodmanFlags(c *expandedContainerSpec) []string {
 				args = append(args, fmt.Sprintf("--%s=%v", key, cur))
 			}
 		default:
-			if v, ok := val.(string); ok {
-				if key == "restart" && v != "always" && v != "unless-stopped" {
-					args = append(args, "--label=kickstart=false")
-				}
-			}
 			args = append(args, fmt.Sprintf("--%s=%v", key, val))
 		}
 	}

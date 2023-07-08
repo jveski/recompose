@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/concurrency"
 	"github.com/jveski/recompose/internal/rpc"
 )
 
@@ -26,7 +27,7 @@ func main() {
 
 	var (
 		inventoryFile = filepath.Join(".", "inventory.toml")
-		state         = &common.StateContainer[*common.NodeInventory]{}
+		state         = &concurrency.StateContainer[*common.NodeInventory]{}
 		client        = &coordClient{BaseURL: getCoordinatorBaseUrl(*coordinatorAddr)}
 	)
 
@@ -43,7 +44,7 @@ func main() {
 		return fingerprint == *coordinatorFingerprint
 	}))
 
-	go common.RunLoop(
+	go concurrency.RunLoop(
 		state.Watch(context.Background()),
 		time.Minute*30, time.Hour,
 		func() bool {
@@ -61,7 +62,7 @@ func main() {
 		}
 	}()
 
-	go common.RunLoop(tightloop, 0, time.Minute*15, func() bool {
+	go concurrency.RunLoop(tightloop, 0, time.Minute*15, func() bool {
 		err := syncInventory(client, inventoryFile, state)
 		if err != nil {
 			log.Printf("error getting inventory from coordinator: %s", err)
@@ -69,7 +70,7 @@ func main() {
 		return err == nil
 	})
 
-	go common.RunLoop(tightloop, 0, time.Minute, func() bool {
+	go concurrency.RunLoop(tightloop, 0, time.Minute, func() bool {
 		ip := *ip
 		if ip == "" {
 			ip = getOutboundIP().String()

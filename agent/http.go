@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/concurrency"
 	"github.com/jveski/recompose/internal/rpc"
 )
 
@@ -59,7 +59,7 @@ func register(client *coordClient, ip string, port uint) error {
 	form.Add("apiport", strconv.Itoa(int(port)))
 
 	// time out the long polling connection after a reasonable period
-	ctx, done := context.WithTimeout(context.Background(), common.Jitter(time.Minute*15))
+	ctx, done := context.WithTimeout(context.Background(), concurrency.Jitter(time.Minute*15))
 	defer done()
 
 	resp, err := client.POST(ctx, client.BaseURL+"/registernode?"+form.Encode(), nil)
