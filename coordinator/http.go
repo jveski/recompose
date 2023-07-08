@@ -20,7 +20,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/julienschmidt/httprouter"
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
 	"github.com/jveski/recompose/internal/rpc"
 )
 
@@ -130,7 +130,7 @@ func newApiHandler(state inventoryContainer, nodeStore *nodeMetadataStore, agent
 
 	// Get the status of the entire cluster
 	router.GET("/status", rpc.WithAuth(clientAuth, func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		resp := &common.ClusterState{}
+		resp := &api.ClusterState{}
 
 		var partial bool
 		for _, node := range nodeStore.List() {
@@ -175,7 +175,7 @@ func newProxyHandler(nodeStore *nodeMetadataStore, agentClient *rpc.Client, upst
 	}
 }
 
-func getAgentStatus(ctx context.Context, agentClient *rpc.Client, node *nodeMetadata) ([]*common.ContainerState, error) {
+func getAgentStatus(ctx context.Context, agentClient *rpc.Client, node *nodeMetadata) ([]*api.ContainerState, error) {
 	resp, err := agentClient.GET(ctx, fmt.Sprintf("https://%s:%d/ps", node.IP, node.APIPort))
 	if err != nil {
 		return nil, err
@@ -192,9 +192,9 @@ func getAgentStatus(ctx context.Context, agentClient *rpc.Client, node *nodeMeta
 		return nil, err
 	}
 
-	states := make([]*common.ContainerState, len(body))
+	states := make([]*api.ContainerState, len(body))
 	for i, raw := range body {
-		state := &common.ContainerState{
+		state := &api.ContainerState{
 			Name:            raw.Names[0],
 			NodeFingerprint: node.Fingerprint,
 			Created:         time.Unix(raw.Created, 0),

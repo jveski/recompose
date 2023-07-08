@@ -5,10 +5,9 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/jveski/recompose/internal/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/jveski/recompose/common"
 )
 
 func TestGetPodmanFlags(t *testing.T) {
@@ -37,7 +36,7 @@ func TestGetPodmanFlags(t *testing.T) {
 	"""
 `
 
-	container := &common.ContainerSpec{Name: "test-name"}
+	container := &api.ContainerSpec{Name: "test-name"}
 	_, err := toml.Decode(fullToml, container)
 	require.NoError(t, err)
 

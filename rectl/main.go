@@ -16,7 +16,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
 	"github.com/jveski/recompose/internal/rpc"
 	"github.com/urfave/cli/v2"
 )
@@ -142,7 +142,7 @@ func main() {
 	os.Exit(1)
 }
 
-func getClusterStatus(c *cli.Context, cc *appContext) (*common.ClusterState, error) {
+func getClusterStatus(c *cli.Context, cc *appContext) (*api.ClusterState, error) {
 	resp, err := cc.Client.GET(c.Context, cc.BaseURL+"/status")
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func getClusterStatus(c *cli.Context, cc *appContext) (*common.ClusterState, err
 		fmt.Fprintf(os.Stderr, "warning: partial results returned from server because one or more agents could not be reached\n")
 	}
 
-	body := &common.ClusterState{}
+	body := &api.ClusterState{}
 	err = json.NewDecoder(resp.Body).Decode(body)
 	if err != nil {
 		return nil, err
@@ -162,7 +162,7 @@ func getClusterStatus(c *cli.Context, cc *appContext) (*common.ClusterState, err
 	return body, nil
 }
 
-func resolveContainerName(cluster *common.ClusterState, ref string) (string, string, error) {
+func resolveContainerName(cluster *api.ClusterState, ref string) (string, string, error) {
 	chunks := strings.SplitN(ref, "@", 2)
 	var candidateName, candidateFingerprint string
 	for _, container := range cluster.Containers {

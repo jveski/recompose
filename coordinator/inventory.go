@@ -16,7 +16,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
 	"github.com/jveski/recompose/internal/concurrency"
 )
 
@@ -35,7 +35,7 @@ func syncInventory(dir string, state inventoryContainer, nms *nodeMetadataStore)
 
 	inv := &indexedInventory{
 		GitSHA:               sha,
-		NodesByFingerprint:   make(map[string]*common.NodeInventory),
+		NodesByFingerprint:   make(map[string]*api.NodeInventory),
 		ClientsByFingerprint: make(map[string]struct{}),
 	}
 	err = readInventory(dir, inv, nms)
@@ -77,13 +77,13 @@ func readInventory(dir string, inv *indexedInventory, nms *nodeMetadataStore) er
 		return err
 	}
 
-	containerIndex := map[string]*common.ContainerSpec{}
+	containerIndex := map[string]*api.ContainerSpec{}
 	for _, node := range cluster.Nodes {
 		if node.Fingerprint == "" {
 			continue
 		}
 
-		nodeInv := &common.NodeInventory{GitSHA: inv.GitSHA}
+		nodeInv := &api.NodeInventory{GitSHA: inv.GitSHA}
 		for _, path := range node.Containers {
 			if container, ok := containerIndex[path]; ok {
 				nodeInv.Containers = append(nodeInv.Containers, container)
@@ -119,7 +119,7 @@ func readInventory(dir string, inv *indexedInventory, nms *nodeMetadataStore) er
 	return nil
 }
 
-func readContainerSpec(file string) (*common.ContainerSpec, error) {
+func readContainerSpec(file string) (*api.ContainerSpec, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, fmt.Errorf("opening file: %w", err)
@@ -129,7 +129,7 @@ func readContainerSpec(file string) (*common.ContainerSpec, error) {
 	hash := md5.New()
 	r := io.TeeReader(f, hash)
 
-	spec := &common.ContainerSpec{}
+	spec := &api.ContainerSpec{}
 	if _, err := toml.NewDecoder(r).Decode(spec); err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ type clientSpec struct {
 
 type indexedInventory struct {
 	GitSHA               string
-	NodesByFingerprint   map[string]*common.NodeInventory
+	NodesByFingerprint   map[string]*api.NodeInventory
 	ClientsByFingerprint map[string]struct{}
 }
 

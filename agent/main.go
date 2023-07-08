@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
 	"github.com/jveski/recompose/internal/concurrency"
 	"github.com/jveski/recompose/internal/rpc"
 )
@@ -27,7 +27,7 @@ func main() {
 
 	var (
 		inventoryFile = filepath.Join(".", "inventory.toml")
-		state         = &concurrency.StateContainer[*common.NodeInventory]{}
+		state         = &concurrency.StateContainer[*api.NodeInventory]{}
 		client        = &coordClient{BaseURL: getCoordinatorBaseUrl(*coordinatorAddr)}
 	)
 

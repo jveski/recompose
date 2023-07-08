@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jveski/recompose/common"
+	"github.com/jveski/recompose/internal/api"
 )
 
 func syncPodman(client *coordClient, state inventoryContainer) error {
@@ -22,7 +22,7 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 		return nil // nothing to do yet
 	}
 
-	goalIndex := map[string]*common.ContainerSpec{}
+	goalIndex := map[string]*api.ContainerSpec{}
 	for _, container := range current.Containers {
 		goalIndex[container.Hash] = container
 	}
@@ -157,7 +157,7 @@ func podmanRm(name string) error {
 	return nil
 }
 
-func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
+func podmanStart(client *coordClient, spec *api.ContainerSpec) error {
 	expanded := &expandedContainerSpec{
 		Spec:             spec,
 		DecryptedSecrets: make([]string, len(spec.Secrets)),
@@ -206,7 +206,7 @@ func podmanStart(client *coordClient, spec *common.ContainerSpec) error {
 }
 
 type expandedContainerSpec struct {
-	Spec             *common.ContainerSpec
+	Spec             *api.ContainerSpec
 	DecryptedSecrets []string // aligned with Config.Secrets
 	Mounts           []string // aligned with Config.Files
 	MountIDs         []string // aligned with Config.Files
