@@ -30,8 +30,10 @@ func main() {
 		client        = &coordClient{BaseURL: rpc.UrlPrefix(*coordinatorAddr)}
 	)
 
-	if err := os.MkdirAll("mounts", 0755); err != nil {
-		log.Fatalf("fatal error while creating directory: %s", err)
+	for _, dir := range []string{"mounts", "state"} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("fatal error while creating directory %q: %s", dir, err)
+		}
 	}
 
 	cert, _, err := rpc.GenCertificate(".")

@@ -40,6 +40,30 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 		for _, mount := range strings.Split(c.Labels["recomposeMounts"], ",") {
 			inUseFiles[mount] = struct{}{}
 		}
+
+	}
+
+	// Clean up state files when the associated container no longer exists
+	stateFiles, err := os.ReadDir("state")
+	if err != nil {
+		return fmt.Errorf("listing state files: %w", err)
+	}
+	for _, file := range stateFiles {
+		hash := strings.TrimSuffix(file.Name(), ".txt")
+		if _, ok := goalIndex[hash]; ok {
+			continue // container should still exist
+		}
+		if _, ok := existingIndex[hash]; ok {
+			continue // container still exists
+		}
+
+		err := os.Remove(filepath.Join("state", file.Name()))
+		if err != nil {
+			return fmt.Errorf("cleaning up container state file: %w", err)
+		}
+
+		state.ReEnter()
+		return nil
 	}
 
 	// Remove orphaned containers
@@ -52,8 +76,10 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 			continue // still exists in inventory
 		}
 
+		writeState(name, hash, "Deleting", "")
 		log.Printf("removing container %q...", name)
 		if err := podmanRm(name); err != nil {
+			writeState(name, hash, "StuckRemoving", "")
 			return fmt.Errorf("removing container %q: %s", name, err)
 		}
 
@@ -82,10 +108,12 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 	// Start missing containers
 	for _, c := range goalIndex {
 		if _, ok := existingIndex[c.Hash]; ok {
+			writeState(c.Name, c.Hash, "Created", "")
 			continue // already created
 		}
 
 		log.Printf("starting container %q...", c.Name)
+		writeState(c.Name, c.Hash, "Creating", "")
 		if err := podmanStart(client, c); err != nil {
 			return fmt.Errorf("error while starting container %q: %s", c.Name, err)
 		}
@@ -98,10 +126,8 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 	return nil
 }
 
-var podmanPsArgs = []string{"ps", "--all", "--format=json", "--filter=label=createdBy=recompose"}
-
 func podmanPs() ([]*psOutput, error) {
-	cmd := exec.Command("podman", podmanPsArgs...)
+	cmd := exec.Command("podman", "ps", "--all", "--format=json", "--filter=label=createdBy=recompose")
 	reader, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("getting command stdout pipe: %w", err)
@@ -127,8 +153,9 @@ func podmanPs() ([]*psOutput, error) {
 }
 
 type psOutput struct {
-	Names  []string
-	Labels map[string]string
+	Names              []string
+	Labels             map[string]string
+	Created, StartedAt int64
 }
 
 func podmanRm(name string) error {
@@ -149,42 +176,55 @@ func podmanStart(client *coordClient, spec *api.ContainerSpec) error {
 
 	// Decrypt secrets
 	for i, secret := range spec.Secrets {
-		resp, err := client.POST(context.Background(), client.BaseURL+"/decrypt", bytes.NewBufferString(secret.Ciphertext))
+		val, err := decryptSecret(client, secret)
 		if err != nil {
+			writeState(spec.Name, spec.Hash, "StuckDecryptingSecret", err.Error())
 			return fmt.Errorf("decrypting secret for env var %q: %s", secret.EnvVar, err)
 		}
-
-		buf, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("reading decrypted secret for env var %q: %s", secret.EnvVar, err)
-		}
-		resp.Body.Close()
-		expanded.DecryptedSecrets[i] = string(buf)
+		expanded.DecryptedSecrets[i] = string(val)
 	}
 
 	// Write files to disk
 	for i, file := range spec.Files {
-		id := uuid.Must(uuid.NewRandom()).String()
-		dest := filepath.Join("mounts", id)
-		err := os.WriteFile(dest, []byte(file.Content), 0755)
+		id, abspath, err := writeFile(file)
 		if err != nil {
+			writeState(spec.Name, spec.Hash, "StuckWritingFile", err.Error())
 			return fmt.Errorf("writing file for mount %q: %s", file.Path, err)
 		}
 
 		expanded.MountIDs[i] = id
-		expanded.Mounts[i], err = filepath.Abs(dest)
-		if err != nil {
-			return fmt.Errorf("getting abspath for mount %q: %s", file.Path, err)
-		}
+		expanded.Mounts[i] = abspath
 		log.Printf("wrote mount file %q", id)
 	}
 
 	out, err := exec.Command("podman", getPodmanFlags(expanded)...).CombinedOutput()
 	if err != nil {
+		writeState(spec.Name, spec.Hash, "StuckCreating", string(out))
 		return fmt.Errorf("%s", out)
 	}
-
 	return nil
+}
+
+func decryptSecret(client *coordClient, secret *api.Secret) ([]byte, error) {
+	resp, err := client.POST(context.Background(), client.BaseURL+"/decrypt", bytes.NewBufferString(secret.Ciphertext))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
+}
+
+func writeFile(file *api.File) (string /* id */, string /* abspath */, error) {
+	id := uuid.Must(uuid.NewRandom()).String()
+	dest := filepath.Join("mounts", id)
+	err := os.WriteFile(dest, []byte(file.Content), 0755)
+	if err != nil {
+		return "", "", err
+	}
+
+	abspath, err := filepath.Abs(dest)
+	return id, abspath, err
 }
 
 type expandedContainerSpec struct {
@@ -221,4 +261,35 @@ func getPodmanFlags(c *expandedContainerSpec) []string {
 
 	args = append(args, c.Spec.Image)
 	return append(args, c.Spec.Command...)
+}
+
+func writeState(name, hash, state, reason string) {
+	writeStateInDir("state", name, hash, state, reason)
+}
+
+func writeStateInDir(dir, name, hash, state, reason string) {
+	fp := filepath.Join(dir, hash+".txt")
+	goal := []byte(name + "\n" + state + "\n" + reason)
+
+	current, err := os.ReadFile(fp)
+	if err == nil && bytes.Equal(current, goal) {
+		return // in sync
+	}
+
+	f, err := os.CreateTemp("", "")
+	if err != nil {
+		log.Fatalf("unable to create temp file: %s", err)
+	}
+	defer f.Close()
+
+	_, err = f.Write(goal)
+	if err != nil {
+		log.Fatalf("unable to write temp file: %s", err)
+	}
+	f.Close()
+
+	err = os.Rename(f.Name(), fp)
+	if err != nil {
+		log.Fatalf("error while swapping container state file: %s", err)
+	}
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -20,7 +20,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/julienschmidt/httprouter"
-	"github.com/jveski/recompose/internal/api"
 	"github.com/jveski/recompose/internal/rpc"
 )
 
@@ -159,27 +158,28 @@ func newProxyHandler(store *nodeMetadataStore, client *rpc.Client, upstreamPath 
 
 func newGetStatusHandler(store *nodeMetadataStore, client *rpc.Client, timeout time.Duration) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		resp := &api.ClusterState{}
+		resp := [][]string{}
 
 		var partial bool
 		for _, node := range store.List() {
-			containers, err := getAgentStatus(r.Context(), client, timeout, node)
+			rows, err := getAgentStatus(r.Context(), client, timeout, node)
 			if err != nil {
 				log.Printf("error while getting agent status: %s", err)
 				partial = true
 				continue
 			}
-			resp.Containers = append(resp.Containers, containers...)
+			resp = append(resp, rows...)
 		}
 
 		if partial {
 			w.WriteHeader(206)
 		}
-		json.NewEncoder(w).Encode(resp)
+		cw := csv.NewWriter(w)
+		cw.WriteAll(resp)
 	}
 }
 
-func getAgentStatus(ctx context.Context, client *rpc.Client, timeout time.Duration, node *nodeMetadata) ([]*api.ContainerState, error) {
+func getAgentStatus(ctx context.Context, client *rpc.Client, timeout time.Duration, node *nodeMetadata) (rows [][]string, err error) {
 	ctx, done := context.WithTimeout(ctx, timeout)
 	defer done()
 
@@ -189,32 +189,20 @@ func getAgentStatus(ctx context.Context, client *rpc.Client, timeout time.Durati
 	}
 	defer resp.Body.Close()
 
-	body := []struct {
-		Names    []string
-		ExitedAt int64
-		Created  int64
-	}{}
-	err = json.NewDecoder(resp.Body).Decode(&body)
-	if err != nil {
-		return nil, err
+	r := csv.NewReader(resp.Body)
+	for {
+		row, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		rows = append(rows, append(row, node.Fingerprint))
 	}
 
-	states := make([]*api.ContainerState, len(body))
-	for i, raw := range body {
-		state := &api.ContainerState{
-			Name:            raw.Names[0],
-			NodeFingerprint: node.Fingerprint,
-			Created:         time.Unix(raw.Created, 0).UTC(),
-		}
-		states[i] = state
-
-		if raw.ExitedAt > 0 {
-			exited := time.Unix(raw.ExitedAt, 0).UTC()
-			state.LastRestart = &exited
-		}
-	}
-
-	return states, nil
+	return rows, nil
 }
 
 type agentAuthorizer struct {

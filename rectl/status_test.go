@@ -2,24 +2,28 @@ package main
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/jveski/recompose/internal/api"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestPrintClusterStatus(t *testing.T) {
-	lr := time.Now().Add(-time.Second)
-	cluster := &api.ClusterState{
-		Containers: []*api.ContainerState{
-			{Name: "test-name-1", NodeFingerprint: "111111111111111111111", Created: time.Now().Add(-time.Hour * 25)},
-			{Name: "test-name-2", NodeFingerprint: "111111111111111111111", Created: time.Now().Add(-time.Hour * 23)},
-			{Name: "t2", NodeFingerprint: "22222222", Created: time.Now().Add(-time.Minute), LastRestart: &lr},
-		},
+	now := time.Now()
+	mktime := func(delta time.Duration) string {
+		return strconv.Itoa(int(now.Add(delta).Unix()))
 	}
+
+	cluster := [][]string{
+		{"test-name-1", "TestState", "test reason", mktime(0), mktime(-time.Second * 2), "111111111111111111111"},
+		{"test-name-2", "TestState", "", mktime(0), mktime(-time.Minute * 2), "111111111111111111111"},
+		{"test-name-3", "", "", mktime(0), mktime(-time.Hour * 2), "111111111111111111111"},
+		{"test-name-4", "", "test reason", mktime(0), mktime(-time.Hour * 24 * 2), "111111111111111111111"},
+	}
+
 	buf := &bytes.Buffer{}
 	printClusterStatus(cluster, buf)
 
-	assert.Equal(t, "NAME           NODE      CREATED    RESTARTED\ntest-name-1    111111    1d         \ntest-name-2    111111    23h        \nt2             222222    1m         1s\n", buf.String())
+	assert.Equal(t, "NAME           STATE        CREATED    STARTED    NODE      REASON\ntest-name-1    TestState    0s         2s         111111    \"test reason\"\ntest-name-2    TestState    0s         2m         111111    \ntest-name-3                 0s         2h         111111    \ntest-name-4                 0s         2d         111111    \"test reason\"\n", buf.String())
 }

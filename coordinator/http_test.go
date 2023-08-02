@@ -84,11 +84,7 @@ func TestRegisterNode(t *testing.T) {
 
 func TestGetStatusHappyPath(t *testing.T) {
 	svr := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{
-			"Names": ["test1"],
-			"ExitedAt": 123,
-			"Created": 234
-		}]`))
+		w.Write([]byte("test1,234,123\n"))
 	}))
 	defer svr.Close()
 
@@ -111,7 +107,7 @@ func TestGetStatusHappyPath(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	fn(w, r, httprouter.Params{})
 	assert.Equal(t, 200, w.Code)
-	assert.Equal(t, "{\"containers\":[{\"name\":\"test1\",\"nodeFingerprint\":\"test-fingerprint\",\"created\":\"1970-01-01T00:03:54Z\",\"lastRestart\":\"1970-01-01T00:02:03Z\"}]}\n", w.Body.String())
+	assert.Equal(t, "test1,234,123,test-fingerprint\n", w.Body.String())
 }
 
 func TestGetStatusTimeout(t *testing.T) {

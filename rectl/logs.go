@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jveski/recompose/internal/api"
 	"github.com/urfave/cli/v2"
 )
 
@@ -50,23 +49,22 @@ func logsCmd(c *cli.Context) error {
 	return err
 }
 
-func resolveContainerName(cluster *api.ClusterState, ref string) (string, string, error) {
+func resolveContainerName(cluster [][]string, ref string) (string, string, error) {
 	chunks := strings.SplitN(ref, "@", 2)
-	var candidateName, candidateFingerprint string
-	for _, container := range cluster.Containers {
-		if container.Name != chunks[0] {
+	for _, row := range cluster {
+		if len(row) < 6 {
 			continue
 		}
-		if candidateName != "" {
-			return "", "", errors.New("multiple containers have this name - reference a specific one using: <container name>@<node fingerprint prefix>")
+		var (
+			containerName   = row[0]
+			nodeFingerprint = row[5]
+		)
+		if containerName != chunks[0] {
+			continue
 		}
-		if len(chunks) == 1 || strings.HasPrefix(container.NodeFingerprint, chunks[1]) {
-			candidateName = container.Name
-			candidateFingerprint = container.NodeFingerprint
+		if len(chunks) == 1 || strings.HasPrefix(nodeFingerprint, chunks[1]) {
+			return containerName, nodeFingerprint, nil
 		}
-	}
-	if candidateName != "" {
-		return candidateName, candidateFingerprint, nil
 	}
 	return "", "", errors.New("container not found")
 }
