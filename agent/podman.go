@@ -114,6 +114,9 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 
 		log.Printf("starting container %q...", c.Name)
 		writeState(c.Name, c.Hash, "Creating", "")
+		if err := podmanRm(c.Name); err != nil {
+			return fmt.Errorf("error while cleaning up previous container %q: %s", c.Name, err)
+		}
 		if err := podmanStart(client, c); err != nil {
 			return fmt.Errorf("error while starting container %q: %s", c.Name, err)
 		}
