@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,10 +12,29 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jveski/recompose/internal/api"
 )
+
+var runtimeCmd string
+
+func init() {
+	out, err := exec.Command("foobar", "version", "-f", "{{ .Version }}").CombinedOutput()
+	if err == nil {
+		log.Printf("found Podman version %s", out)
+		runtimeCmd = "podman"
+		return
+	}
+	if !errors.Is(err, exec.ErrNotFound) {
+		log.Printf("error while checking for Podman binary: %s", err)
+		return
+	}
+
+	log.Printf("Poodman is not available - using Docker instead")
+	runtimeCmd = "docker"
+}
 
 func syncPodman(client *coordClient, state inventoryContainer) error {
 	current := state.Get()
@@ -129,8 +149,15 @@ func syncPodman(client *coordClient, state inventoryContainer) error {
 	return nil
 }
 
+// TODO: {"Command":"\"/docker-entrypoint.…\"","CreatedAt":"2023-09-13 16:41:15 -0500 CDT","ID":"657a78485e76","Image":"nginx","Labels":"maintainer=NGINX Docker Maintainers \u003cdocker-maint@nginx.com\u003e","LocalVolumes":"0","Mounts":"","Names":"friendly_swirles","Networks":"bridge","Ports":"","RunningFor":"26 seconds ago","Size":"1.09kB (virtual 192MB)","State":"exited","Status":"Exited (0) 23 seconds ago"}
+
 func podmanPs() ([]*psOutput, error) {
-	cmd := exec.Command("podman", "ps", "--all", "--format=json", "--filter=label=createdBy=recompose")
+	format := "json"
+	if runtimeCmd == "docker" {
+		format = "{{ json . }}"
+	}
+
+	cmd := exec.Command(runtimeCmd, "ps", "--all", "--format", format, "--filter=label=createdBy=recompose")
 	reader, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("getting command stdout pipe: %w", err)
@@ -145,9 +172,47 @@ func podmanPs() ([]*psOutput, error) {
 	}
 
 	list := []*psOutput{}
-	if err := json.NewDecoder(reader).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decoding 'ps' command's output: %w", err)
+	if runtimeCmd != "docker" {
+		if err := json.NewDecoder(reader).Decode(&list); err != nil {
+			return nil, fmt.Errorf("decoding 'ps' command's output: %w", err)
+		}
+	} else {
+		dec := json.NewDecoder(reader)
+		for {
+			item := &struct {
+				Names, Labels, CreatedAt string
+				// TODO: Get StartedAt
+			}{}
+			err := dec.Decode(item)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				return nil, fmt.Errorf("decoding 'ps' command's output: %w", err)
+			}
+
+			created, err := time.Parse("2006-01-02 15:04:05 -0700 MST", item.CreatedAt)
+			if err != nil {
+				return nil, fmt.Errorf("decoding created time of container %q: %w", item.Names, err)
+			}
+
+			labels := map[string]string{}
+			for _, kv := range strings.Split(item.Labels, ",") {
+				kvs := strings.SplitN(kv, "=", 2)
+				if len(kvs) != 2 {
+					continue
+				}
+				labels[kvs[0]] = kvs[1]
+			}
+
+			list = append(list, &psOutput{
+				Names:   []string{item.Names},
+				Labels:  labels,
+				Created: created.Unix(),
+			})
+		}
 	}
+
 	if err := cmd.Wait(); err != nil {
 		return nil, fmt.Errorf("running 'ps' command: %s", buf)
 	}
@@ -162,7 +227,7 @@ type psOutput struct {
 }
 
 func podmanRm(name string) error {
-	out, err := exec.Command("podman", "rm", "--force", name).CombinedOutput()
+	out, err := exec.Command(runtimeCmd, "rm", "--force", name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s", out)
 	}
@@ -200,7 +265,7 @@ func podmanStart(client *coordClient, spec *api.ContainerSpec) error {
 		log.Printf("wrote mount file %q", id)
 	}
 
-	out, err := exec.Command("podman", getPodmanFlags(expanded)...).CombinedOutput()
+	out, err := exec.Command(runtimeCmd, getPodmanFlags(expanded)...).CombinedOutput()
 	if err != nil {
 		writeState(spec.Name, spec.Hash, "StuckCreating", string(out))
 		return fmt.Errorf("%s", out)

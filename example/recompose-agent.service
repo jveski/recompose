@@ -4,9 +4,8 @@ Description=Recompose Container Configuration Management Agent
 [Service]
 Restart=always
 RestartSec=3
-KillMode=process # don't kill containers spawned by the agent
+KillMode=process
 
-ExecStartPre=/bin/mkdir -p /opt/recompose-agent
 WorkingDirectory=/opt/recompose-agent
 
 # Replace --coordinator with the host or host:port of your coordinator process
